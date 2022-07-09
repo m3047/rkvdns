@@ -62,7 +62,9 @@
 # keys will be created using this as a prefix.
 # NOTE: Do NOT define this EXCEPT to run tests due to performance
 #       impacts.
-# CONTROL_KEY = None
+#CONTROL_KEY = None
+# NOTE: This key prefix should be considered to be CASE INSENSITIVE, as
+#       one of the features of this utility is case folding.
 #CONTROL_KEY = 'tests'
 
 #
