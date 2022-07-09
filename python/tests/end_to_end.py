@@ -80,7 +80,15 @@ class WithRedis(unittest.TestCase):
         return
     
     def tearDown(self):
-        self.redis.delete(*self.redis.keys(config.CONTROL_KEY + '*'))
+        """Remove test entries from Redis.
+        
+        NOTE: We do our best to delete all upper cased and lower cased variants
+              as well!
+        """
+        for key in (config.CONTROL_KEY, config.CONTROL_KEY.lower(), config.CONTROL_KEY.upper()):
+            keys = self.redis.keys(key + '*')
+            if keys:
+                self.redis.delete(*keys)
         return
 
 class TestOptions(WithRedis):
@@ -119,7 +127,6 @@ class TestOptions(WithRedis):
         self.redis.set(key,'1.3.3.7')
         self.redis.expire(key, 13)
         resp = self.resolver.query(key + '.get.' + self.zone, 'A')
-
         self.assertEqual(resp.response.answer[0].ttl, 20)
         return
     
@@ -129,8 +136,32 @@ class TestOptions(WithRedis):
         self.redis.set(key,'1.3.3.7')
         self.redis.expire(key, 1440)
         resp = self.resolver.query(key + '.get.' + self.zone, 'A')
-
         self.assertEqual(resp.response.answer[0].ttl, 60)
+        return
+    
+    def test_fold_lower(self):
+        self.set_config(case_folding='lower')
+        key = config.CONTROL_KEY + '_foLD_lOWer'
+        self.redis.set(key.lower(),'1.3.3.7')
+        resp = self.resolver.query(key + '.get.' + self.zone, 'A')
+        self.assertEqual(resp.response.answer[0][0].to_text(), '1.3.3.7')
+        return
+        
+    def test_fold_upper(self):
+        self.set_config(case_folding='upper')
+        key = config.CONTROL_KEY + '_foLD_UpPeR'
+        self.redis.set(key.upper(),'1.3.3.7')
+        resp = self.resolver.query(key + '.get.' + self.zone, 'A')
+        self.assertEqual(resp.response.answer[0][0].to_text(), '1.3.3.7')
+        return
+
+    def test_fold_escape(self):
+        self.set_config(case_folding='escape')
+        key = config.CONTROL_KEY + '_foLD_eScApe'
+        self.redis.set(key,'1.3.3.7')
+        key = '\.+-' + config.CONTROL_KEY + '\._-F-O\.LD_\.e+s-c+ape'
+        resp = self.resolver.query(key + '.get.' + self.zone, 'A')
+        self.assertEqual(resp.response.answer[0][0].to_text(), '1.3.3.7')
         return
 
 class TestQueries(WithRedis):

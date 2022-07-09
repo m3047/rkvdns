@@ -14,6 +14,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """I/O Operations for both Redis and DNS requests.
 
+DEBUG_FOLDING
+-------------
+
+Setting this to e.g. print or logging.info will print out the case folding
+being applied. It is very verbose, but can be handy if queries are NX and you
+just can't undertand why.
+
 DNS EDNS(0) Policy
 ------------------
 
@@ -80,11 +87,14 @@ import redis
 
 from ipaddress import IPv4Address, IPv6Address
 
-from . import FunctionResult
+from . import FunctionResult, FOLDERS
 from .statistics import StatisticsCollector, UndeterminedStatisticsCollector
 
 # Start/end of coroutines.
 PRINT_COROUTINE_ENTRY_EXIT = None
+
+# Prints the type of folding and before / after.
+DEBUG_FOLDING = None
 
 #################################################################################
 # DNS I/O PLUGINS
@@ -261,13 +271,22 @@ class Request(object):
                                          )
         r = Request.REDIS
         patches = r.hgetall(self.response_config.control_key)
+        deletions = set()
         for k in patches.keys():
             if k in self.REDIS_FIXUP_TEST_KEYS:
                 if k in patches and patches[k] in self.REDIS_FIXUP_VALUES:
                     patches[k] = self.REDIS_FIXUP_VALUES[patches[k]]
+                if k == 'case_folding':
+                    # NOTE: For whatever reason, can't apply closures with update()
+                    #patches[k] = FOLDERS[patches[k]]
+                    deletions.add('case_folding')
+                    self.response_config.config['folder'] = FOLDERS[patches[k]]
             else:
                 patches[k] = int(patches[k])
+        for k in deletions:
+            del patches[k]
         self.response_config.config.update(patches)
+        self.response_config.config['patched'] = True
         return
     
     def with_config(self, config, stats):
@@ -801,6 +820,8 @@ class RedisBaseQuery(object):
     
     def fold(self, i):
         attr = self.PARAMETERS[i]
+        if DEBUG_FOLDING:
+            DEBUG_FOLDING('folding: {}\nbefore: {}\nafter: {}'.format(attr, getattr(self, attr), self.folder(getattr(self, attr))))
         setattr(self, attr, self.folder(getattr(self, attr)) )
         return
     
