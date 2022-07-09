@@ -408,7 +408,7 @@ class Request(object):
                     rdatas.append(v)
             except ValueError:
                 logging.warning('Unprocessable value for {} ({}) from {}'.format(
-                    self.request.question[0].name.to_text(), rdtype.to_text(rdata_type), self.request.plug.query_address
+                    self.request.question[0].name.to_text(), rdtype.to_text(rdata_type), self.plug.query_address
                 ))
 
         if len(rdatas):
