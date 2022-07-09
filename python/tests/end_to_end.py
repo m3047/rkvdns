@@ -202,7 +202,8 @@ class TestQueries(WithRedis):
         self.set_config()
         key = config.CONTROL_KEY + '_test_get'
         self.redis.set(key, b'42')
-        resp = self.resolver.query(key + '.get.' + self.zone, 'TXT')
+        # We slip a test for case insensitivity of the operator in here...
+        resp = self.resolver.query(key + '.gEt.' + self.zone, 'TXT')
         self.assertEqual(resp.response.answer[0][0].strings[0], b'42')
         return
     

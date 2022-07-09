@@ -953,6 +953,7 @@ REDIS_QUERY_TYPES = {
 
 def RedisQuery(query, *args):
     """Returns the correct query class or None."""
+    query[-1] = query[-1].lower()
     if query[-1] not in REDIS_QUERY_TYPES:
         raise RedisOperandError()
     return REDIS_QUERY_TYPES[query[-1]](query, *args)
