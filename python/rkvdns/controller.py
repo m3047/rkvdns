@@ -47,7 +47,7 @@ class Controller(object):
         self.response_queue = response_queue
         self.redis_io = redis_io
         self.event_loop = event_loop
-        self.zone = [ label.encode() for label in zone.strip().split('.') ]
+        self.zone = [ label.lower().encode() for label in zone.strip().split('.') ]
         if statistics is not None:
             self.pre_redis_stats = statistics.Collector('pre_redis')
             self.redis_stats = statistics.Collector('redis')
@@ -121,12 +121,12 @@ class Controller(object):
                 if timer is not None:
                     timer.stop()
                 continue
-            qlabels = list(req.request.question[0].name.labels)
+            qlabels = list(req.request.question[0].name.labels)            
             if not qlabels[-1]:
                 del qlabels[-1]
             zlen = len(self.zone) * -1
 
-            if self.zone[zlen:] != qlabels[zlen:]:
+            if self.zone[zlen:] != [ label.lower() for label in qlabels[zlen:] ]:
                 await self.response_queue.write( self.nxdomain(req) )
                 if timer is not None:
                     timer.stop()
