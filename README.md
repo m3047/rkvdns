@@ -54,3 +54,16 @@ DNS understands 32 and 128 bit integers (big endian) natively.
 * `root` access
 
 For production use you should put this behind a caching full service resolver such as _BIND_, _Unbound_ or _Knot_.
+
+### Supported Redis Operations
+
+The following operations are supported:
+
+* `GET`
+* `HGET`
+* `HKEYS`
+* `KEYS`
+* `LINDEX`
+* `LRANGE`
+* `SMEMBERS`
+
