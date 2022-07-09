@@ -33,4 +33,47 @@ class FunctionResult(object):
         except self.exceptions as e:
             self.exc = e
         return self.success(self)
+
+#
+# Capitalization folding has four potential settings, as shown in FOLDERS.
+# The escape folder in particular requires special treatment.
+#
+ESCAPE_HANDLERS = (
+        lambda x:x,
+        lambda x:x.upper(),
+        lambda x:x.lower()
+    )
     
+def escape_folder(v):
+    """Escaping case folder.
+    
+    Or un-folder. The first three octets in the key define escapes:
+    
+      octet 0:  Escapes itself and the other two octets.
+      octet 1:  Forces the following octet to be uppercase.
+      octet 2:  Forces the following octet to be lowercase.
+      
+    (For those who work with electronic health records, I feel your pain!)
+    """
+    escapes = { k:ESCAPE_HANDLERS[i] for i,k in enumerate(v[:3]) }
+
+    built = []
+    state = None
+    for c in v[3:]:
+        if state is None:
+            if c in escapes:
+                state = c
+            else:
+                built.append(c)
+            continue
+        built.append( ord(escapes[state](chr(c))) )
+        state = None
+        
+    return bytes(built)
+    
+FOLDERS = {
+        None:     lambda x:x,
+        'lower':  lambda x:x.lower(),
+        'upper':  lambda x:x.upper(),
+        'escape': lambda x:escape_folder(x)
+    }
