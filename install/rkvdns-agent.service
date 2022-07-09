@@ -1,0 +1,13 @@
+[Unit]
+Description=Redis Key-Value DNS Proxy
+Requires=redis@default.service
+After=redis@default.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/share/rkvdns/python/agent.py
+Restart=on-failure
+
+[Install]
+WantedBy=redis@default.service
+
