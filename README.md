@@ -67,3 +67,6 @@ The following operations are supported:
 * `LRANGE`
 * `SMEMBERS`
 
+-------------------
+
+For paid support: fwm.rkvdns.support.f2u@m3047.net
