@@ -321,7 +321,16 @@ class TestQueries(WithRedis):
         self.assertTrue(len(resp.answer[0]) <= max_recs)
 
         return
-            
+        
+    def test_int_a(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_int_a'
+        self.redis.incr(key)
+        resp = self.resolver.query(key + '.get.' + self.zone, 'A')
+        self.assertTrue(isinstance(resp.response.answer[0][0], A))
+        self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.1')
+        return
+
 if __name__ == '__main__':
     print('Using control key "{}" at redis {}'.format(config.CONTROL_KEY, config.REDIS_SERVER))
     unittest.main(verbosity=2)

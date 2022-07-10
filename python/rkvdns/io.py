@@ -371,6 +371,20 @@ class Request(object):
             ttl = self.response_config.max_ttl
         return ttl
     
+    @staticmethod
+    def convert_to_address(v, cls):
+        """Honor things that look like either addresses or integers."""
+        if type(v) is bytes:
+            v = v.decode()
+        # Does it look like a "normal" address?
+        try:
+            addr = cls(v)
+            return addr
+        except ValueError:
+            pass
+        # Is it an integer? This will kick a ValueError exception upstairs.
+        return cls(int(v))
+    
     def noerror(self, query):
         """NOERROR / success -- FLUENT"""
         response = self.response = dns.message.make_response(self.request)
@@ -397,9 +411,9 @@ class Request(object):
             rdata_type = query_type
             to_rdata = lambda v: rdata.from_text(rdata_class, rdata_type, v)
             if   rdata_type == rdtype.A:
-                convert = lambda v:IPv4Address(type(v) is str and v or v.decode()).exploded
+                convert = lambda v:self.convert_to_address(v,IPv4Address).exploded
             elif rdata_type == rdtype.AAAA:
-                convert = lambda v:IPv6Address(type(v) is str and v or v.decode()).exploded
+                convert = lambda v:self.convert_to_address(v,IPv6Address).exploded
         rdatas = []
         for value in query.results():
             try:
