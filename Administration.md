@@ -105,6 +105,23 @@ In the second RPZ, create the default deny rule:
 *.PROXY.REDIS.EXAMPLE.COM  IN CNAME .
 ```
 
+## Encryption
+
+Plain old DNS is fast, but it's not encrypted.
+
+You can pass the traffic over a VPN, and that's a common solution especially
+for nameserver-to-nameserver traffic. There is no reason that the "authoritative" actual
+service needs to be accessible to end users, it only needs to be reachable from the
+caching resolver(s). Caching resolvers can be chained by forwarding from one resolver to
+another.
+
+There are options for encrypting traffic with end users: _DNS over HTTP(S)_ (DoH) and _DNS over TLS_ (DoT).
+You need to have a DNS client / stub resolver which supports one of them.
+
+_DoT_ support for the service is as simple as setting up _Nginx_ terminating TLS on port 853. See your
+caching resolver's documentation for the mechanisms it supports.
+
+
 -------------------
 
 For paid support: fwm.rkvdns.support.f2u@m3047.net
