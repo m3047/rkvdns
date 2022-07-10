@@ -1,5 +1,5 @@
 # rkvdns
-**DNS Caching Proxy Server for Redis**
+**DNS Caching/"Reverse" Proxy Server for Redis**
 
 RELEASE STATUS: alpha
 
