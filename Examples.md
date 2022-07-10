@@ -386,3 +386,7 @@ b'\x01\x02\x03\x04'
 For the record, although I use `dnspython` in the service I really wouldn't recommend it for integer support
 in production. If you use a library which lets you access wire data, the conversion is going to look more like
 `value = int.from_bytes(buffer[i:i+4], 'big')` in raw Python. Maybe you don't want to use Python at all. :-/
+
+-------------------
+
+For paid support: fwm.rkvdns.support.f2u@m3047.net
