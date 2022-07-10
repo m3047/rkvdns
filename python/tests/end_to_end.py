@@ -68,8 +68,10 @@ class WithRedis(unittest.TestCase):
         self.redis = redis.client.Redis( config.REDIS_SERVER, decode_responses=True,
                                          socket_connect_timeout=5
                                        )
-        self.resolver = Resolver(config.ZONE, [config.INTERFACE])
         self.zone = config.ZONE.rstrip() + '.'
+        resolver = self.resolver = Resolver(configure=False)
+        resolver.domain = self.zone
+        resolver.nameservers = [config.INTERFACE]
         return
     
     def set_config(self, **kwargs):
