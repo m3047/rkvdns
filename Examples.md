@@ -1,5 +1,7 @@
 # Examples
 
+For advanced administration topics, see the [Administration Guide](https://github.com/m3047/rkvdns/blob/main/Administration.md).
+
 ## The Gleam in My Eye
 
 This is the example given in the README. I run [ShoDoHFlo](https://github.com/m3047/shodohflo) and it maintains a
