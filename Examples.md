@@ -172,7 +172,7 @@ do it through some tool. For whatever it's worth, `dig` command output in the ab
 So here's the deal. As far as the DNS is concerned, the dots in `foo.get.redis.sophia.m3047.` don't exist; they're
 visual separators for the _labels_, which is what the DNS stores and uses.
 
-When you see something like `10\.0\.0\.224\;*\;flow.KEYS.redis.sophia.m3047.` the "\" is being used to escape the dots
+When you see something like `10\.0\.0\.224\;*\;flow.KEYS.redis.sophia.m3047.` the "\\" is being used to escape the dots
 in `10.0.0.224` which is literally what we're looking for and what is actually written as the key value, along with
 escaping ";" which in _zone file format_ is the comment marker.
 
@@ -235,3 +235,152 @@ foo.get.redis.sophia.m3047. 26  IN      TXT     "bar"
 Here we see that the TTL is counting down from the default value. The caching resolver fetched the answer the
 first time we asked (and returned the default TTL of 30), and then every time we ask again it gives us a
 decrementing TTL until it expires, at which point it fetches the answer again.
+
+## Case Folding
+
+The DNS is _case insensitive_: it treats upper and lower case letters the same. This only applies to ASCII,
+it doesn't understand Unicode (punycode doesn't count). Due to caching and other things, the query you send to a
+caching resolver may have different case when it reaches the actual service. Redis is _case sensitive_.
+
+To address this, we support _case folding_. The following folding modes are supported with `CASE_FOLDING`:
+
+* (literal) `None`: no folding
+* `'lower'`: force lower case
+* `'upper'`: force upper case
+* `'escape'`: use per-character folding with escapes
+
+In the first example, my keys all look like `<address>;<address>;<port>;flow`. `flow` is an actual lower case literal.
+(There are some others but this is the one we're interested in. Conveniently all of them are lower case!)
+    
+I have the service configured with `CASE_FOLDING = 'lower'`.
+
+## Addresses
+
+Most people's familiarity with the DNS concerns addresses, or `A` (IPv4) and `AAAA` (IPv6) records. There are other
+types. The service supports three types of records:
+
+* `TXT` Text data
+* `A` IPv4 addresses
+* `AAAA` IPv6 addresses
+
+If you go back and look, you'll see I specified `TXT` in all of the examples. `A` is the default type if nothing is
+specified.
+
+**TIP: If you're not getting data and it's not an address, did you specify `TXT` in the query?**
+
+How does this work?
+
+```
+>>> conn.set('foo','1.2.3.4')
+True
+>>> 
+# dig foo.get.redis.sophia.m3047
+
+; <<>> DiG 9.12.3-P1 <<>> foo.get.redis.sophia.m3047
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 33021
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1280
+; COOKIE: bc844ea008ac880d51f7054e62cb04c2dbb8afc76c93a38e (good)
+;; QUESTION SECTION:
+;foo.get.redis.sophia.m3047.    IN      A
+
+;; ANSWER SECTION:
+foo.get.redis.sophia.m3047. 30  IN      A       1.2.3.4
+
+;; AUTHORITY SECTION:
+REDIS.SOPHIA.m3047.     600     IN      NS      SOPHIA.M3047.
+
+;; ADDITIONAL SECTION:
+SOPHIA.m3047.           600     IN      A       10.0.0.224
+
+;; Query time: 29 msec
+;; SERVER: 10.0.0.220#53(10.0.0.220)
+;; WHEN: Sun Jul 10 09:56:34 PDT 2022
+;; MSG SIZE  rcvd: 159
+```
+
+Works pretty well!
+
+## Native Integer Type Support
+
+The DNS supports _big endian_ 32 bit and 128 bit integers natively. That's what an IPv4 or IPv6 address is, respectively.
+
+```
+>>> conn.delete('foo')
+1
+>>> conn.incr('foo')
+1
+>>> conn.incr('foo')
+2
+>>> conn.incr('foo')
+3
+
+ dig @sophia.m3047 foo.get.redis.sophia.m3047
+
+; <<>> DiG 9.12.3-P1 <<>> @sophia.m3047 foo.get.redis.sophia.m3047
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 4412
+;; flags: qr aa; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1200
+;; QUESTION SECTION:
+;foo.get.redis.sophia.m3047.    IN      A
+
+;; ANSWER SECTION:
+foo.get.redis.sophia.m3047. 30  IN      A       0.0.0.3
+
+;; Query time: 6 msec
+;; SERVER: 10.0.0.224#53(10.0.0.224)
+;; WHEN: Sun Jul 10 10:54:12 PDT 2022
+;; MSG SIZE  rcvd: 71
+```
+
+I know, it's underwhelming. Here we will make a Python `ipaddress.IPv4Address` from a
+"dotted quad" string, and then convert that to an integer. We will then use the base 10
+integer value to set the redis key:
+
+```
+>>> addr = ip_address('1.2.3.4')
+>>> int(addr)
+16909060
+>>> conn.set('foo',int(addr))
+True
+# dig @sophia.m3047 foo.get.redis.sophia.m3047 +noall +answer
+
+; <<>> DiG 9.12.3-P1 <<>> @sophia.m3047 foo.get.redis.sophia.m3047 +noall +answer
+; (1 server found)
+;; global options: +cmd
+foo.get.redis.sophia.m3047. 30  IN      A       1.2.3.4
+```
+
+We're almost there. If we convert the integer address to big endian bytes, we get
+`b'\x01\x02\x03\x04'`! We can see looking at wire format in `dnspython` that it agrees
+that this is wire format for the number.
+
+In case you are wondering, this is where dotted quad notation comes from.
+
+```
+>>> int(addr).to_bytes(4,'big')
+b'\x01\x02\x03\x04'
+>>> resp = resolver.query('foo.get.redis.sophia.m3047.','A')
+>>> resp.response.answer[0][0]
+<DNS IN A rdata: 1.2.3.4>
+>>> bio = BytesIO()
+>>> resp.response.answer[0][0].to_wire(bio)
+>>> bio.seek(0)
+0
+>>> bio.read()
+b'\x01\x02\x03\x04'
+>>> 
+```
+
+For the record, although I use `dnspython` in the service I really wouldn't recommend it for integer support
+in production. If you use a library which lets you access wire data, the conversion is going to look more like
+`value = int.from_bytes(buffer[i:i+4], 'big')` in raw Python. Maybe you don't want to use Python at all. :-/
