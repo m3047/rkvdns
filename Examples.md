@@ -100,7 +100,8 @@ You may be thinking, "I know what `redis.sophia.m3047` is, I can guess what `KEY
 the whack, slash and punctuation?"
 
 You're almost never going to be able to deal with DNS directly on the wire, you're always going to have to
-do it through some tool.
+do it through some tool. For whatever it's worth, the command output in the above examples is colloquially called
+"zone file format".
 
 Let's repeat that same query in _Python_ (although you're free to use the language and library of your choice!).
 
