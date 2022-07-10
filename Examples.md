@@ -175,3 +175,63 @@ visual separators for the _labels_, which is what the DNS stores and uses.
 When you see something like `10\.0\.0\.224\;*\;flow.KEYS.redis.sophia.m3047.` the "\" is being used to escape the dots
 in `10.0.0.224` which is literally what we're looking for and what is actually written as the key value, along with
 escaping ";" which in _zone file format_ is the comment marker.
+
+## TTL (time to live)
+
+Redis supports TTLs. If no TTL is available or makes sense (in the case of for example `KEYS`) the configured value
+of `DEFAULT_TTL` is used.
+
+Presently our key `foo` doesn't have a TTL:
+
+```
+# dig @10.0.0.224 foo.get.redis.sophia.m3047 TXT +noall +answer
+
+; <<>> DiG 9.12.3-P1 <<>> @10.0.0.224 foo.get.redis.sophia.m3047 TXT +noall +answer
+; (1 server found)
+;; global options: +cmd
+foo.get.redis.sophia.m3047. 30  IN      TXT     "bar"
+```
+
+Let's set it to expire:
+
+```
+>>> conn.expire('foo',111)
+True
+>>> 
+
+# dig @10.0.0.224 foo.get.redis.sophia.m3047 TXT +noall +answer
+
+; <<>> DiG 9.12.3-P1 <<>> @10.0.0.224 foo.get.redis.sophia.m3047 TXT +noall +answer
+; (1 server found)
+;; global options: +cmd
+foo.get.redis.sophia.m3047. 109 IN      TXT     "bar"
+```
+
+When we retrieved it again we got the value `109` instead of `30`. We got 109 because a couple of seconds elapsed
+from when I set expiry and when I repeated the lookup operation.
+
+### TTLs and the WAF
+
+If you put a caching resolver in front of the service, you'll see something rather different:
+
+```
+# dig foo.get.redis.sophia.m3047 TXT +noall +answer
+
+; <<>> DiG 9.12.3-P1 <<>> foo.get.redis.sophia.m3047 TXT +noall +answer
+;; global options: +cmd
+foo.get.redis.sophia.m3047. 30  IN      TXT     "bar"
+# dig foo.get.redis.sophia.m3047 TXT +noall +answer
+
+; <<>> DiG 9.12.3-P1 <<>> foo.get.redis.sophia.m3047 TXT +noall +answer
+;; global options: +cmd
+foo.get.redis.sophia.m3047. 28  IN      TXT     "bar"
+# dig foo.get.redis.sophia.m3047 TXT +noall +answer
+
+; <<>> DiG 9.12.3-P1 <<>> foo.get.redis.sophia.m3047 TXT +noall +answer
+;; global options: +cmd
+foo.get.redis.sophia.m3047. 26  IN      TXT     "bar"
+```
+
+Here we see that the TTL is counting down from the default value. The caching resolver fetched the answer the
+first time we asked (and returned the default TTL of 30), and then every time we ask again it gives us a
+decrementing TTL until it expires, at which point it fetches the answer again.
