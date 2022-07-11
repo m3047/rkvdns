@@ -77,5 +77,5 @@ INTERFACE = '127.0.0.1'
 REDIS_SERVER = '127.0.0.1'
 
 # Zone in which we publish data.
-ZONE = 'redis.example.com'
+ZONE = 'proxy.redis.example.com'
 
