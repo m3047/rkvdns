@@ -302,6 +302,7 @@ class Request(object):
     
     @property
     def request(self):
+        """Opportunity to finalize the request promise."""
         if self.request_ is None:
             self.request_ = dns.message.from_wire(self.raw)
             self.raw = None
@@ -465,7 +466,6 @@ class Request(object):
                         lambda fr: not (fr.exc or len(fr.result) > limit),
                         response.to_wire, max_size=65535, exceptions=TooBig
                     )
-        to_wire()
         while not to_wire():
             if to_wire.exc:
                 if isinstance(to_wire.exc, TooBig):
