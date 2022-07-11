@@ -751,7 +751,7 @@ class DnsResponseQueue(object):
             for item in needed:
                 pending.add(self[item].get())
 
-            done, pending = await asyncio.wait(pending, loop=self.event_loop, timeout=1, return_when=asyncio.FIRST_COMPLETED)
+            done, pending = await asyncio.wait(pending, loop=self.event_loop, return_when=asyncio.FIRST_COMPLETED)
 
         # Should never exit.
         raise RuntimeError('Control loop should never exit.')
