@@ -1,5 +1,5 @@
 Copy `configuration-sample.py` to `configuration.py` and make the necessary changes at the bottom. If _redis_ and _rkvdns_
-are both installed on the same node and you plan to test there locally (`localhost`), The only thing you need to change is the `ZONE`.
+are both installed on the same node and you plan to test there locally (`localhost`), the only thing you need to change is the `ZONE`.
 (Although `proxy.redis.example.com` will work fine in this specific case too.)
 
 You may want
