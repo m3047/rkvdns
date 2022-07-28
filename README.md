@@ -51,7 +51,7 @@ DNS understands 32 and 128 bit integers (big endian) natively.
 * Python 3.6 or better
 * python `redis`
 * `dnspython`
-* `root` access
+* `root` access in order to listen on a privileged port (port 53)
 
 For production use you should put this behind a caching full service resolver such as _BIND_, _Unbound_ or _Knot_.
 
