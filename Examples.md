@@ -112,7 +112,7 @@ First off, you're on the right track. The overall construction of the query name
     
 From right to left:
 
-* **domain** is the service name (`www.example.com`). In DNS parlance it is a _delegated zone_ and so it is indeed what is popularly referred to as a _domain_ although DNS has a simultaneously more specific and more generic meaning for the term.
+* **domain** is the service name (`redis-department.example.com`). In DNS parlance it is a _delegated zone_ and so it is indeed what is popularly referred to as a _domain_ although DNS has a simultaneously more specific and more generic meaning for the term. One way to think about it is to imagine it as the "Redis Department" which has its own nameserver(s) -- this service.
 
 The other parts are "things in the domain":
 
