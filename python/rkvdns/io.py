@@ -437,7 +437,7 @@ class Request(object):
                     rd = b''.join(rr.strings)
                     if len(rd) > self.response_config.max_value_payload:
                         logging.warn('Max single value length ({}) exceeded for {} from {}'.format(
-                            self.response_config.max_value_payload, self.request.question[0].name.to_text(), self.request.plug.query_address
+                            self.response_config.max_value_payload, self.request.question[0].name.to_text(), self.plug.query_address
                         ))
                         if self.response_config.return_partial_value:
                             rr.strings[0] = rd[:self.response_config.max_value_payload]
@@ -475,7 +475,7 @@ class Request(object):
             if not udp and wire_len > limit:
                 if not self.response_config.return_partial_tcp:
                     logging.error('TCP payload size exceeded for {} from {}'.format(
-                        self.request.question[0].name.to_text(), self.request.plug.query_address
+                        self.request.question[0].name.to_text(), self.plug.query_address
                     ))
                     response.set_rcode(rcode.SERVFAIL)
             overage = limit / wire_len
