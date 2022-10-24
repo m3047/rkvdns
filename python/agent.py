@@ -231,10 +231,11 @@ LOG_LEVEL = None
 STATS = 3600
 QUEUE_DEPTH = None
 
+ENABLE_ERROR_TXT = False
+LEAK_SEMAPHORE_IF_EXCEPTION = False
+
 # This is the Redis key which we use for orchestrating tests.
 CONTROL_KEY = None
-
-#CONSOLE = None
 
 if __name__ == "__main__":
     from configuration import *
@@ -243,9 +244,8 @@ else:
     REDIS_SERVER = '127.0.0.1'
     
     ZONE = 'redis.example.com'
-    
-#if CONSOLE:
-    #import rkvdns.console as console
+
+ZONE = [ label.lower().encode() for label in ZONE.strip('.').split('.') ]
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
@@ -357,6 +357,8 @@ def main():
                         all_queries_as_txt  = ALL_QUERIES_AS_TXT,
                         folder              = FOLDERS[CASE_FOLDING],
                         control_key         = CONTROL_KEY,
+                        enable_error_txt    = ENABLE_ERROR_TXT,
+                        zone                = ZONE,
                         # These are for test scaffolding, but have no other impact.
                         redis_server        = redis_server,
                         redis_timeout       = 5
@@ -366,7 +368,7 @@ def main():
     response_queue = io.DnsResponseQueue(MAX_PENDING, event_loop)
 
     dns_io = io.DnsIO( interface, event_loop, pending_queue, response_queue, response_config, statistics )
-    redis_io = io.RedisIO( redis_server, event_loop )
+    redis_io = io.RedisIO( redis_server, event_loop, LEAK_SEMAPHORE_IF_EXCEPTION )
     controller = Controller( pending_queue, response_queue, redis_io, event_loop, ZONE, statistics )
 
     if QUEUE_DEPTH:

@@ -57,6 +57,16 @@
 #import logging
 #LOG_LEVEL = logging.INFO
 
+# If set to True, then instead of returning DNS errors the error message is
+# encoded in a CNAMEd TXT record.
+#ENABLE_ERROR_TXT = False
+
+# If set to True, then the semaphore leaks and Redis queries cease if Redis
+# queries are triggering exceptions. The notion is to attenuate adversarial
+# attacks against Redis. It's up to you: if you want RKVDNS to cease harassing
+# Redis if it's kicking exceptions, set this to true; then RKVDNS will hang.
+#LEAK_SEMAPHORE_IF_EXCEPTION = False
+
 # Define in order to run tests. It should be considered a key
 # prefix. The key itself will point to a redis hash. Additional
 # keys will be created using this as a prefix.

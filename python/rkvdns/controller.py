@@ -46,7 +46,7 @@ class Controller(object):
         self.response_queue = response_queue
         self.redis_io = redis_io
         self.event_loop = event_loop
-        self.zone = [ label.lower().encode() for label in zone.strip().split('.') ]
+        self.zone = zone
         if statistics is not None:
             self.pre_redis_stats = statistics.Collector('pre_redis')
             self.redis_stats = statistics.Collector('redis')
@@ -64,35 +64,35 @@ class Controller(object):
         logging.error('FORMERR: Disallowed qtype: {} in: {} from: {}'.format(
                 rdtype.to_text(qtype), req.request.question[0].name.to_text(), req.plug.query_address
             ))
-        req.formerr()
+        req.formerr('Disallowed qtype: {}'.format(rdtype.to_text(qtype)))
         return req
     
     def nxdomain(self, req):
         logging.warning('NXDOMAIN: Key or zone not found in: {} from: {}'.format(
                 req.request.question[0].name.to_text(), req.plug.query_address
             ))
-        req.nxdomain()
+        req.nxdomain('Key or zone not found.')
         return req
     
     def no_operation(self, req):
         logging.warning('FORMERR: Operation not specified in: {} from: {}'.format(
                 req.request.question[0].name.to_text(), req.plug.query_address
             ))
-        req.formerr()
+        req.formerr('Operation not specified.')
         return req
                 
     def parameter_error(self, req, e):
         logging.error('FORMERR: {} in: {} from: {}'.format(
                 repr(e), req.request.question[0].name.to_text(), req.plug.query_address
             ))
-        req.formerr()
+        req.formerr('Parameter error: {}'.format(repr(e)))
         return req
 
     def query_failure(self, req, e):
         logging.error('SERVFAIL: {} in: {} from: {}'.format(
                 repr(e), req.request.question[0].name.to_text(), req.plug.query_address
             ))
-        req.servfail()
+        req.servfail('Query failure: {}'.format(repr(e)))
         return req
     
     def query_success(self, req, query):
@@ -170,7 +170,7 @@ class Controller(object):
                 timer = None
 
             if   query.exception is not None:
-                await self.response_queue.write( self.query_failure(req, e) )
+                await self.response_queue.write( self.query_failure(req, query.exception) )
             elif query.result is None:
                 await self.response_queue.write( self.nxdomain(req) )
             else:

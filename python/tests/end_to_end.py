@@ -38,6 +38,8 @@ from dns.rdtypes.IN.AAAA import AAAA
 from dns.rdtypes.ANY.TXT import TXT
 import dns.flags
 import dns.query, dns.message
+import dns.rdatatype as rdtype
+import re
 
 if '..' not in sys.path:
     sys.path.insert(0,'..')
@@ -186,6 +188,17 @@ class TestQueries(WithRedis):
             resp = self.resolver.query('foo.'+self.zone,'TXT')
         return
 
+    def test_bad_operator_as_txt(self):
+        ASSERTS = { 
+            rdtype.CNAME: lambda rr: self.assertTrue( re.match('\d+[.]error[.]', rr.to_text().lower()) ),
+            rdtype.TXT:   lambda rr: self.assertTrue( rr.to_text().strip('"').lower().startswith('parameter error: redisoperanderror') )
+        }
+        self.set_config(enable_error_txt=True)
+        resp = self.resolver.query('foo.'+self.zone,'TXT')
+        for rrset in resp.response.answer:
+            ASSERTS[rrset.rdtype](rrset[0])
+        return
+
     def test_bald_operator(self):
         self.set_config()
         with self.assertRaises(NoNameservers):
@@ -320,7 +333,41 @@ class TestQueries(WithRedis):
         self.assertTrue(len(resp.answer[0]) <= max_recs)
 
         return
+    
+    def test_wrong_type(self):
+        key = config.CONTROL_KEY + '_wrong_type'
+        self.redis.lpush(key, 'A'*200)
+        with self.assertRaises(NoNameservers):
+            resp = self.resolver.query(key + '.get.' + self.zone, 'A')
+        return
+    
+    def test_tcp_too_large(self):
+        self.set_config(max_tcp_payload=3000)
+        key = config.CONTROL_KEY + '_tcp_large'
+        total = 0
+        i = b'A'
+        while total <= 3000 + 1:
+            self.redis.lpush(key, i * 200)
+            i = chr(ord(i)+1)
+            total += 200
+        with self.assertRaises(NoNameservers):
+            resp = self.resolver.query( ':.' + key + '.lrange.' + self.zone, 'TXT', tcp=True)
+        return
         
+    def test_tcp_too_large_as_txt(self):
+        self.set_config(max_tcp_payload=3000, enable_error_txt=True)
+        key = config.CONTROL_KEY + '_tcp_large_as_txt'
+        total = 0
+        i = b'A'
+        while total <= 3000 + 1:
+            self.redis.lpush(key, i * 200)
+            i = chr(ord(i)+1)
+            total += 200
+        resp = self.resolver.query( ':.' + key + '.lrange.' + self.zone, 'TXT', tcp=True)
+        for rrset in resp.response.answer:
+            self.assertEqual(len(rrset), 1)
+        return
+
     def test_int_a(self):
         self.set_config()
         key = config.CONTROL_KEY + '_int_a'

@@ -81,10 +81,12 @@ import dns.rrset as rrset
 from dns.rdtypes.ANY.TXT import TXT
 import dns.flags
 from dns.exception import TooBig
+import dns.name
 
 import redis
 
 from ipaddress import IPv4Address, IPv6Address
+from random import random
 
 from . import FunctionResult, FOLDERS
 from .statistics import StatisticsCollector, UndeterminedStatisticsCollector
@@ -221,7 +223,7 @@ class Request(object):
     REDIS = None        # For tests / debugging.
     
     STATISTICS_TYPES = ('udp_drop', 'udp', 'tcp')
-    REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value', 'all_queries_as_txt', 'case_folding')
+    REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value', 'all_queries_as_txt', 'case_folding', 'enable_error_txt')
     REDIS_FIXUP_VALUES = { 'False':False, 'True':True, 'None':None }
     
     @classmethod
@@ -271,6 +273,10 @@ class Request(object):
         r = Request.REDIS
         patches = r.hgetall(self.response_config.control_key)
         deletions = set()
+        # NOTE: This all looks a little strange. Bear in mind that while the values are pythonic
+        # in configuration.py and in tests/end_to_end.py the patches get written to redis
+        # and so what we get back is (mostly) strings and so we have to convert back to the proper
+        # python types.
         for k in patches.keys():
             if k in self.REDIS_FIXUP_TEST_KEYS:
                 if k in patches and patches[k] in self.REDIS_FIXUP_VALUES:
@@ -340,25 +346,50 @@ class Request(object):
         
         return
     
-    def formerr(self):
-        """FORMERR -- FLUENT"""
+    def cname_error(self, text):
+        response = self.response
+        error_name = '{}.error.{}.'.format(int(random()*1000000000), b'.'.join(self.response_config.zone).decode())
+
+        cname_rrset = response.find_rrset(
+                                    response.answer, self.request.question[0].name,
+                                    rdcls.IN, rdtype.CNAME, create=True
+                                )
+        cname_rrset.ttl = self.response_config.default_ttl
+        cname_rrset.add( rdata.from_text( rdcls.IN, rdtype.CNAME, error_name ) )
+
+        error_name = dns.name.from_text(error_name)
+        error_rrset = response.find_rrset(
+                                    response.answer, error_name,
+                                    rdcls.IN, rdtype.TXT, create=True
+                                )
+        error_rrset.ttl = self.response_config.default_ttl
+        error_rrset.add( TXT( rdcls.IN, rdtype.TXT, [ text.encode() ] ) )
+        
+        return
+    
+    def error_response(self, code, text):
         response = self.response = dns.message.make_response(self.request)
-        response.set_rcode(rcode.FORMERR)
+        if self.response_config.enable_error_txt and text is not None:
+            response.set_rcode(rcode.NOERROR)
+            self.cname_error( text )
+        else:
+            response.set_rcode(code)
         self.edns_fixup()
+        return
+
+    def formerr(self, text=None):
+        """FORMERR -- FLUENT"""
+        self.error_response(rcode.FORMERR, text)
         return self
         
-    def nxdomain(self):
+    def nxdomain(self, text=None):
         """NXDOMAIN -- FLUENT"""
-        response = self.response = dns.message.make_response(self.request)
-        response.set_rcode(rcode.NXDOMAIN)
-        self.edns_fixup()
+        self.error_response(rcode.NXDOMAIN, text)
         return self
     
-    def servfail(self):
+    def servfail(self, text=None):
         """SERVFAIL -- FLUENT"""
-        response = self.response = dns.message.make_response(self.request)
-        response.set_rcode(rcode.SERVFAIL)
-        self.edns_fixup()
+        self.error_response(rcode.SERVFAIL, text)
         return self
     
     def ttl(self, query):
@@ -471,13 +502,20 @@ class Request(object):
                     wire_len = 65535 * 2
                 else:
                     raise to_wire.exc
-            wire_len = len(to_wire.result)
+            else:
+                wire_len = len(to_wire.result)
             if not udp and wire_len > limit:
                 if not self.response_config.return_partial_tcp:
                     logging.error('TCP payload size exceeded for {} from {}'.format(
                         self.request.question[0].name.to_text(), self.plug.query_address
                     ))
-                    response.set_rcode(rcode.SERVFAIL)
+                    if self.response_config.enable_error_txt:
+                        for rr in list(answer_rrset):
+                            answer_rrset.remove(rr)
+                        self.cname_error('TCP payload size exceeded')
+                        break
+                    else:
+                        response.set_rcode(rcode.SERVFAIL)
             overage = limit / wire_len
             new_length = floor(len(answer_rrset) * overage)
             for rr in list(answer_rrset)[new_length:]:
@@ -487,7 +525,10 @@ class Request(object):
         
         if udp:
             response.flags |= dns.flags.TC
-            to_wire()
+        
+        to_wire()
+        if to_wire.exc:
+            raise to_wire.exc
         
         return to_wire.result        
 
@@ -984,9 +1025,10 @@ class RedisIO(object):
     WORKERS = 1
     CONNECT_TIMEOUT = 5
 
-    def __init__(self, server, loop):
+    def __init__(self, server, loop, leak_semaphore_if_exception):
         """We allow a backlog of one extra query."""
         self.event_loop = loop
+        self.leak_semaphore_if_exception = leak_semaphore_if_exception
         self.semaphore = asyncio.Semaphore( self.WORKERS+1, loop=loop )
         self.pool = ThreadPoolExecutor(self.WORKERS)
         self.redis = redis.client.Redis(server, decode_responses=False,
@@ -997,11 +1039,11 @@ class RedisIO(object):
     def redis_job(self, query, callback):
         """The actual job run in the thread pool.
         
-        POSSIBLE SEMAPHORE LEAK
+        INTENTIONAL SEMAPHORE LEAK if LEAK_SEMAPHORE_IF_EXCEPTION = True
         
-        We only release the semaphore if there was no exception kicked, and so
-        repeated exceptions could result in a deadlock. This is intentional to
-        make the situation self-limiting in the case of adversarial input and
+        If True we only release the semaphore if there was no exception kicked,
+        and so repeated exceptions will result in a deadlock. This is intentional
+        to make the situation self-limiting in the case of adversarial input and
         should be revisited.
         """
         if PRINT_COROUTINE_ENTRY_EXIT:
@@ -1011,13 +1053,13 @@ class RedisIO(object):
             exc = result = ttl = None
             result = query.query(self.redis)
             query.resolve_ttl(self.redis)
-            query.store_result( result, exc )
         except redis.exceptions.ConnectionError as e:
             logging.error('redis.exceptions.ConnectionError: {}'.format(e))
             exc = e
         except Exception as e:
             logging.error('{}:\n{}'.format(e, traceback.format_exc()))
             exc = e
+        query.store_result( result, exc )
         asyncio.run_coroutine_threadsafe( self.finish_job(exc, result, callback), self.event_loop )
         
         if PRINT_COROUTINE_ENTRY_EXIT:
@@ -1033,8 +1075,8 @@ class RedisIO(object):
             PRINT_COROUTINE_ENTRY_EXIT('> finish_job')
 
         await callback
-        # TODO: Do we want to release the semaphore if this happens... or not?
-        if exc is None:
+
+        if not (exc is None and self.leak_semaphore_if_exception):
             self.semaphore.release()
 
         if PRINT_COROUTINE_ENTRY_EXIT:
