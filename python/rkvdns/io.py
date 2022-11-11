@@ -120,11 +120,14 @@ class UdpPlug(DnsPlug):
     def query_address(self):
         return self.address[0]
         
-    async def write(self, response):
+    async def write(self, response, timer):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('> UdpPlug.write')
 
         self.transport.sendto( response, self.address )
+        
+        if timer is not None:
+            timer.stop()
 
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< UdpPlug.write')
@@ -141,7 +144,7 @@ class TcpPlug(DnsPlug):
     def query_address(self):
         return self.stream.writer.get_extra_info('peername')
         
-    async def write(self, response):
+    async def write(self, response, timer):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('> TcpPlug.write')
 
@@ -155,6 +158,9 @@ class TcpPlug(DnsPlug):
                 logging.error('Exception on TCP channel to {}, closing connection. {}'.format(self.query_address, e))
                 self.stream.close()
         self.semaphore.release()
+        
+        if timer is not None:
+            timer.stop()
 
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< TcpPlug.write')
@@ -665,13 +671,15 @@ class DnsIOControl(object):
             pass
         tcp_pending = asyncio.Semaphore(self.response_queue[TcpPlug].maxsize, loop=self.event_loop)
 
-        async for writer in self.response_queue.get(tcp_pending):
+        async for writer in self.response_queue.get():
 
             if PRINT_COROUTINE_ENTRY_EXIT:
                 PRINT_COROUTINE_ENTRY_EXIT('> write_control ({})'.format(writer.request.id))
 
             if self.write_stats is not None:
                 write_timer = self.write_stats.start_timer()
+            else:
+                write_timer = None
             
             # Send the selected response.
             try:
@@ -683,8 +691,6 @@ class DnsIOControl(object):
                     writer.plug.query_address, question.name.to_text(), rdtype.to_text(question.rdtype),
                     traceback.format_exc()
                 ) )
-                if isinstance(writer.plug, TcpPlug):
-                    tcp_pending.release()
                 if writer.timer is not None:
                     writer.timer.stop(timer_category)
                     write_timer.stop()
@@ -693,6 +699,7 @@ class DnsIOControl(object):
                 continue
 
             if isinstance(writer.plug, TcpPlug):
+                await tcp_pending.acquire()
                 writer.plug.semaphore = tcp_pending
                 timer_category = 'tcp'
             else:
@@ -700,12 +707,11 @@ class DnsIOControl(object):
             
             self.event_loop.create_task(
                 writer.plug.write(
-                    wire_task
+                    wire_task, write_timer
             ) )
             
             if writer.timer is not None:
                 writer.timer.stop(timer_category)
-                write_timer.stop()
         
             if PRINT_COROUTINE_ENTRY_EXIT:
                 PRINT_COROUTINE_ENTRY_EXIT('< write_control ({})'.format(writer.request.id))
@@ -753,13 +759,7 @@ class DnsResponseQueue(object):
         """Return the correct queue based on the plugin class."""
         return self.queue[key]
     
-    async def tcp_get(self, semaphore):
-        """Retrieves something from the TCP queue after acquiring the semaphore."""
-        await semaphore.acquire()
-        task = await self.response_queue[TcpPlug].get()
-        return task.result()
-    
-    async def get(self, tcp_pending):
+    async def get(self):
         """Async genfunc returning (gated) write tasks to process."""
         done = set()
         pending = set()
