@@ -121,6 +121,43 @@ You need to have a DNS client / stub resolver which supports one of them.
 _DoT_ support for the service is as simple as setting up _Nginx_ terminating TLS on port 853. See your
 caching resolver's documentation for the mechanisms it supports.
 
+## Errors as TXT
+
+In some cases maybe you don't have access to the originating RKVDNS server's logs. Really you should
+work on that. (If you can't query the RKVDNS server directly, the only error you may see is `SERVFAIL`.)
+
+It is possible to turn (most) errors into "valid" DNS responses by setting `ENABLE_ERROR_TXT = True`.
+
+If this is done, then the response is a `CNAME` pointing to a randomized `TXT` record with the actual
+error description:
+
+```
+# dig @127.0.0.1 foo.bar.redis.sophia.m3047 txt
+; <<>> DiG 9.12.3-P1 <<>> @127.0.0.1 foo.bar.redis.sophia.m3047 txt
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 54780
+;; flags: qr rd; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1200
+;; QUESTION SECTION:
+;foo.bar.redis.sophia.m3047.    IN      TXT
+
+;; ANSWER SECTION:
+foo.bar.redis.sophia.m3047. 30  IN      CNAME   511124793.error.redis.sophia.m3047.
+511124793.error.redis.sophia.m3047. 30 IN TXT   "Parameter error: RedisOperandError()"
+
+;; Query time: 3 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1)
+;; WHEN: Mon Oct 24 17:08:58 PDT 2022
+;; MSG SIZE  rcvd: 134
+```
+
+In this case `bar` was not a recognized operand.
+
 
 -------------------
 
