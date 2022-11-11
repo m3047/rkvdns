@@ -374,16 +374,6 @@ def main():
     if QUEUE_DEPTH:
         asyncio.run_coroutine_threadsafe( queue_depth_report(pending_queue, response_queue), event_loop)
         
-    #if CONSOLE:
-        #console_ctxt = console.Context()
-        #console_service = event_loop.run_until_complete(
-                #asyncio.start_server(
-                    #console_ctxt.handle_requests,
-                    #CONSOLE['host'], CONSOLE['port'], 
-                    #loop=event_loop, limit=MAX_READ_SIZE
-                #)
-            #)
-
     try:
         event_loop.run_forever()
     except KeyboardInterrupt:
