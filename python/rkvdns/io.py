@@ -330,7 +330,7 @@ class Request(object):
         No EDNS is returned with responses over TCP.
         """
         if isinstance(self.plug, TcpPlug):
-            self.response.edns = self.NO_EDNS_FLAG
+            self.response.use_edns(self.NO_EDNS_FLAG)
             self.udp_limit = None
             return
         
@@ -338,17 +338,16 @@ class Request(object):
         #
         # Do we even have EDNS?
         if self.request.edns == self.NO_EDNS_FLAG:
-            self.response.edns = self.NO_EDNS_FLAG
+            self.response.use_edns(self.NO_EDNS_FLAG)
             self.udp_limit = self.NO_EDNS_PAYLOAD_SIZE
             return
         
         # Lesser of what's in the query or configured, but at least 512 bytes
-        self.response.edns = self.HAS_EDNS_FLAG
         self.udp_limit = min(
                             max( self.request.payload, self.NO_EDNS_PAYLOAD_SIZE ),
                             self.response_config.max_udp_payload
                         )
-        self.response.payload = self.udp_limit
+        self.response.use_edns(self.HAS_EDNS_FLAG, payload=self.udp_limit)
         
         return
     
@@ -575,14 +574,6 @@ class DnsIOControl(object):
         # write_controller -- create_write_controller()
         return
 
-    #def add_to_pending_queue(self, request):
-        #if self.pending_queue.full():
-            #if request.timer is not None:
-                #request.timer.stop('udp_drop')
-            #return
-        #self.pending_queue.put_nowait(request)
-        #return
-
     def create_udp_handler(self, request, addr ):
         if self.pending_queue.full():
             # Drops it on the floor.
@@ -655,7 +646,7 @@ class DnsIOControl(object):
         return
         
     def create_tcp_listener(self, interface, port, tcp_max_read):
-        service = asyncio.start_server(self.handle_tcp_requests, interface, port, loop=self.event_loop, limit=tcp_max_read)
+        service = asyncio.start_server(self.handle_tcp_requests, interface, port, limit=tcp_max_read)
         self.tcp_transport = self.event_loop.run_until_complete(service)
         return
         
@@ -669,7 +660,7 @@ class DnsIOControl(object):
             PRINT_COROUTINE_ENTRY_EXIT('> write_control')
         class TaskSelected(Exception):
             pass
-        tcp_pending = asyncio.Semaphore(self.response_queue[TcpPlug].maxsize, loop=self.event_loop)
+        tcp_pending = asyncio.Semaphore(self.response_queue[TcpPlug].maxsize)
 
         async for writer in self.response_queue.get():
 
@@ -744,7 +735,7 @@ class DnsResponseQueue(object):
     
     def __init__(self, queue_depth, loop):
         self.queue = {
-                cls: asyncio.Queue(queue_depth, loop=loop)
+                cls: asyncio.Queue(queue_depth)
                 for cls in DnsPlug.CLASSES
             }
         self.event_loop = loop
@@ -789,9 +780,10 @@ class DnsResponseQueue(object):
             # Refill the pending tasks
             needed = DnsPlug.CLASSES - { type(item) for item in pending }
             for item in needed:
-                pending.add(self[item].get())
+                # What gets added here will be awaited below by asyncio.wait()
+                pending.add( self.event_loop.create_task( self[item].get() ) )
 
-            done, pending = await asyncio.wait(pending, loop=self.event_loop, return_when=asyncio.FIRST_COMPLETED)
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
 
         # Should never exit.
         raise RuntimeError('Control loop should never exit.')
@@ -1029,7 +1021,7 @@ class RedisIO(object):
         """We allow a backlog of one extra query."""
         self.event_loop = loop
         self.leak_semaphore_if_exception = leak_semaphore_if_exception
-        self.semaphore = asyncio.Semaphore( self.WORKERS+1, loop=loop )
+        self.semaphore = asyncio.Semaphore( self.WORKERS+1 )
         self.pool = ThreadPoolExecutor(self.WORKERS)
         self.redis = redis.client.Redis(server, decode_responses=False,
                                         socket_connect_timeout=self.CONNECT_TIMEOUT
