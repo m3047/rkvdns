@@ -187,6 +187,11 @@ CASE_FOLDING allows you to control what happens. There are four options:
   escape        The first three octets of the key or pattern define escapes
                 which apply to the following octet when they occur.
 """
+
+import sysconfig
+
+PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
+
 import sys
 import logging
 import traceback
@@ -203,6 +208,11 @@ import rkvdns.io as io
 import rkvdns.controller
 from rkvdns.controller import Controller
 from rkvdns import FOLDERS
+
+if PYTHON_IS_311:
+    from asyncio import CancelledError
+else:
+    from concurrent.futures import CancelledError
 
 # Set this to a print func to enable it.
 PRINT_COROUTINE_ENTRY_EXIT = None
@@ -336,11 +346,12 @@ def main():
     
     logging.info('Redis Proxy DNS Agent starting. listening: {}  redis: {}'.format(interface, redis_server))
 
-    event_loop = asyncio.get_event_loop()
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop( event_loop )
 
     if STATS:
         statistics = StatisticsFactory()
-        asyncio.run_coroutine_threadsafe(statistics_report(statistics, STATS), event_loop)
+        event_loop.create_task(statistics_report(statistics, STATS))
     else:
         statistics = None
     
@@ -364,7 +375,7 @@ def main():
                         redis_timeout       = 5
     )
 
-    pending_queue = asyncio.Queue(MAX_PENDING, loop=event_loop)
+    pending_queue = asyncio.Queue(MAX_PENDING)
     response_queue = io.DnsResponseQueue(MAX_PENDING, event_loop)
 
     dns_io = io.DnsIO( interface, event_loop, pending_queue, response_queue, response_config, statistics )
@@ -372,7 +383,7 @@ def main():
     controller = Controller( pending_queue, response_queue, redis_io, event_loop, ZONE, statistics )
 
     if QUEUE_DEPTH:
-        asyncio.run_coroutine_threadsafe( queue_depth_report(pending_queue, response_queue), event_loop)
+        event_loop.create_task( queue_depth_report(pending_queue, response_queue) )
         
     try:
         event_loop.run_forever()
@@ -381,7 +392,11 @@ def main():
 
     dns_io.close()
     
-    tasks = asyncio.Task.all_tasks(event_loop)
+    if PYTHON_IS_311:
+        tasks = asyncio.all_tasks(event_loop)
+    else:
+        tasks = asyncio.Task.all_tasks(event_loop)
+
     if tasks:
         event_loop.run_until_complete(close_tasks(tasks))
     
