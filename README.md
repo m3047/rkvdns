@@ -1,7 +1,7 @@
 # rkvdns
 **DNS Caching/Reverse Proxy Server for Redis**
 
-RELEASE STATUS: no known issues
+RELEASE STATUS: no known issues. Tested with _Python_ 3.6 and 3.11; _dnspython_ 1.15 and 2.2.
 
 In a nutshell:
 
