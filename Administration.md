@@ -57,6 +57,49 @@ In all cases below, the records are intended to go into one or more locally admi
 application order. Below when we refer to the "first" or "second" RPZ we are referring to the order in which the RPZs are
 processed. Oftentimes the first one is called the white or allow list and the second one is called the black or deny list.
 
+**Read the instructions and follow carefully**
+
+By this I mean the instructions for setting up and administering RPZ according to your DNS server. The examples below
+refer to what goes _in_ the RPZ (the intended record), but that's not necessarily what's in the zone file _for_ the RPZ.
+
+As an example: "I want to block anything under the `.PANGOLIN` top-level domain (which doesn't exist... yet... in ICANN's DNS scheme)".
+
+For example `foo.pangolin` is blocked as "does not exist" (luckily the extended syntax hooks are pretty much the same
+across RPZ implementations):
+
+```
+# dig foo.pangolin
+
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 58459
+
+;; QUESTION SECTION:
+;foo.pangolin.                  IN      A
+
+;; ADDITIONAL SECTION:
+rpz1.m3047.net.         1       IN      SOA     DEV.NULL. M3047.M3047.NET. 387 600 60 86400 600
+```
+
+The rule is in an RPZ (zone) named `rpz1.m3047.net`. That RPZ is served/managed on a _BIND_ server. The zone contains
+the following actual record:
+
+```
+# dig *.pangolin.rpz1.m3047.net
+
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 15804
+
+;; QUESTION SECTION:
+;*.pangolin.rpz1.m3047.net.     IN      A
+
+;; ANSWER SECTION:
+*.PANGOLIN.rpz1.m3047.net. 600  IN      CNAME   .
+```
+
+If this was one of the following examples I would just refer to
+
+```
+*.PANGOLIN IN CNAME .
+```
+
 ### SOA record
 
 ___The service DOES NOT support zone transfers.___
@@ -64,7 +107,7 @@ ___The service DOES NOT support zone transfers.___
 You may need an `SOA` record. The following in an RPZ will do the trick:
 
 ```
-PROXY.REDIS.EXAMPLE.COM. IN SOA  REDIS.EXAMPLE.COM. OPERATOR.EXAMPLE.COM. 1 999999 999999 999999 5
+PROXY.REDIS.EXAMPLE.COM IN SOA  REDIS.EXAMPLE.COM. OPERATOR.EXAMPLE.COM. 1 999999 999999 999999 5
 ```
 `1` is the serial number, and `5` is whatever MIN_TTL is set to. The other three parameters are all pertinent
 to zone transfers and should be set to large values.
@@ -74,7 +117,7 @@ to zone transfers and should be set to large values.
 The DNS calls in-zone nameservers _in bailiwick_.
 
 ```
-PROXY.REDIS.EXAMPLE.COM. IN NS   REDIS.EXAMPLE.COM.
+PROXY.REDIS.EXAMPLE.COM IN NS   REDIS.EXAMPLE.COM.
 ```
 
 This is arguably useless if the caching nameserver is also authoritative for `example.com` (the enclosing zone).
@@ -86,7 +129,7 @@ This is arguably useless if the caching nameserver is also authoritative for `ex
 Blocks the `KEYS` operator:
 
 ```
-*.KEYS.PROXY.REDIS.EXAMPLE.COM. IN CNAME  .
+*.KEYS.PROXY.REDIS.EXAMPLE.COM IN CNAME  .
 ```
 
 #### Allowing a specific query
@@ -96,7 +139,7 @@ You need to create two entries for this.
 In the first RPZ, create the allow rule:
 
 ```
-foo.GET.PROXY.REDIS.EXAMPLE.COM. IN CNAME  rpz-passthru.
+foo.GET.PROXY.REDIS.EXAMPLE.COM IN CNAME  rpz-passthru.
 ```
 
 In the second RPZ, create the default deny rule:
