@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2023 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -56,7 +56,7 @@ class Controller(object):
             self.redis_stats = None
             self.write_queue_stats = None
         
-        queue_processor = event_loop.create_task(self.process_pending_queue())
+        self.queue_processor = event_loop.create_task(self.process_pending_queue())
 
         return
 

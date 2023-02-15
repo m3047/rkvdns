@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2023 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -114,13 +114,14 @@ class UdpPlug(DnsPlug):
         """Address in this case encapsulates the remote address+port."""
         self.address = address
         self.transport = transport
+        self.writing = None     # Set prior to calling write()
         return
     
     @property
     def query_address(self):
         return self.address[0]
         
-    async def write(self, response, timer):
+    async def write(self, response, timer, active_writers):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('> UdpPlug.write')
 
@@ -129,6 +130,9 @@ class UdpPlug(DnsPlug):
         if timer is not None:
             timer.stop()
 
+        self.writing = None
+        active_writers.remove(self)
+        
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< UdpPlug.write')
         return
@@ -138,13 +142,14 @@ class TcpPlug(DnsPlug):
     def __init__(self, stream):
         self.semaphore = None   # Set prior to calling write()
         self.stream = stream
+        self.writing = None     # Set prior to calling write()
         return
     
     @property
     def query_address(self):
         return self.stream.writer.get_extra_info('peername')
         
-    async def write(self, response, timer):
+    async def write(self, response, timer, active_writers):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('> TcpPlug.write')
 
@@ -161,6 +166,9 @@ class TcpPlug(DnsPlug):
         
         if timer is not None:
             timer.stop()
+            
+        self.writing = None
+        active_writers.remove(self)
 
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< TcpPlug.write')
@@ -572,6 +580,7 @@ class DnsIOControl(object):
         # udp_transport -- create_udp_listener()
         # tcp_transport -- create_tcp_listener()
         # write_controller -- create_write_controller()
+        self.active_writers = set()
         return
 
     def create_udp_handler(self, request, addr ):
@@ -695,11 +704,15 @@ class DnsIOControl(object):
                 timer_category = 'tcp'
             else:
                 timer_category = 'udp'
-            
-            self.event_loop.create_task(
-                writer.plug.write(
-                    wire_task, write_timer
-            ) )
+
+            # Adding the writer to active_writers and pinning the Task into the writer
+            # keeps the Task strong until the write finishes and write() can remove
+            # itself.
+            self.active_writers.add(writer)
+            writer.writing = self.event_loop.create_task(
+                    writer.plug.write(
+                        wire_task, write_timer, self.active_writers
+                )   )
             
             if writer.timer is not None:
                 writer.timer.stop(timer_category)
@@ -1026,6 +1039,7 @@ class RedisIO(object):
         self.redis = redis.client.Redis(server, decode_responses=False,
                                         socket_connect_timeout=self.CONNECT_TIMEOUT
                                        )
+        self.finishers = set()
         return
     
     def redis_job(self, query, callback):
@@ -1052,13 +1066,18 @@ class RedisIO(object):
             logging.error('{}:\n{}'.format(e, traceback.format_exc()))
             exc = e
         query.store_result( result, exc )
-        asyncio.run_coroutine_threadsafe( self.finish_job(exc, result, callback), self.event_loop )
-        
+
+        promise = []
+        finisher = asyncio.run_coroutine_threadsafe(
+                        self.finish_job(exc, result, callback, promise), self.event_loop
+                    )
+        promise.append(finisher)
+        self.finishers.add(finisher)
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< redis_job')
         return
     
-    async def finish_job(self, exc, result, callback):
+    async def finish_job(self, exc, result, callback, promise):
         """Part II of redis_job() runs as a coroutine
         
         ...rather than in the thread pool.
@@ -1070,6 +1089,7 @@ class RedisIO(object):
 
         if not (exc is None and self.leak_semaphore_if_exception):
             self.semaphore.release()
+        self.finishers.remove(promise[0])
 
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< finish_job')

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -351,7 +351,7 @@ def main():
 
     if STATS:
         statistics = StatisticsFactory()
-        event_loop.create_task(statistics_report(statistics, STATS))
+        statistics_routine = event_loop.create_task(statistics_report(statistics, STATS))
     else:
         statistics = None
     
@@ -383,7 +383,7 @@ def main():
     controller = Controller( pending_queue, response_queue, redis_io, event_loop, ZONE, statistics )
 
     if QUEUE_DEPTH:
-        event_loop.create_task( queue_depth_report(pending_queue, response_queue) )
+        depth_routine = event_loop.create_task( queue_depth_report(pending_queue, response_queue) )
         
     try:
         event_loop.run_forever()
