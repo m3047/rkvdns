@@ -1,16 +1,15 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# it under the terms of the GNU Affero General Public License version 3,
+# as published by the Free Software Foundation.
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# GNU Affero General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #
@@ -66,6 +65,45 @@
 # attacks against Redis. It's up to you: if you want RKVDNS to cease harassing
 # Redis if it's kicking exceptions, set this to true; then RKVDNS will hang.
 #LEAK_SEMAPHORE_IF_EXCEPTION = False
+
+# NS and SOA record synthesis.
+# 
+# Since as far as The DNS is concerned this is a "zone" and all respectable
+# zones should have NS and SOA records we provide the means to synthesize them
+# here.
+#
+# NS Record. Set this to the FQDN of the RKVDNS instance. Do NOT set it to
+# the name of the zone (unless they're the same). The synthesized record will
+# look like the following (in "zone file format"):
+#
+#    <ZONE> <DEFAULT_TTL> IN NS <RKVDNS_FQDN>
+#
+# Utilizing the various defaults given in this sample file, an actual NS
+# record would look like:
+#
+#    proxy.redis.example.com. 30 IN NS redis.example.com.
+#
+# It is assumed that redis.example.com as A/AAAA records.
+#
+# RKVDNS_FQDN = None
+# RKVDNS_FQDN = 'redis.example.com'
+#
+# SOA Record. Set this to the "contact name", which is to say to an administrator
+# email address with the "@" replaced by a ".". So for instance
+# dns-admin@example.com would be entered as dns-admin.example.com. The synthesized
+# record will look like the following (in "zone file format"):
+#
+#    <ZONE> <DEFAULT_TTL> IN SOA <RKVDNS_FQDN> <SOA_CONTACT> 1 <DEFAULT_TTL> <DEFAULT_TTL> 86400 <MIN_TTL>
+#
+# Utilizing the various defaults given in this sample file, an actual SOA
+# record would look like:
+#
+#    proxy.redis.example.com 30 IN SOA redis.example.com dns-admin.example.com 1 30 30 86400 5
+#
+# Both SOA_CONTACT and RKVDNS_FQDN must be specified (and not the default of None)
+# in order for SOA records to be synthesized.
+# SOA_CONTACT = None
+# SOA_CONTACT = 'dns-admin.example.com'
 
 # Define in order to run tests. It should be considered a key
 # prefix. The key itself will point to a redis hash. Additional

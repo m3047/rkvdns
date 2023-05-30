@@ -405,6 +405,65 @@ class Request(object):
         self.error_response(rcode.SERVFAIL, text)
         return self
     
+    def soa(self):
+        config = self.response_config
+        if not (config.rkvdns_fqdn and config.soa_contact):
+            return self.servfail('SOA not available')
+        
+        response = self.response = dns.message.make_response(self.request)
+        response.set_rcode(rcode.NOERROR)
+
+        all_ones = 2**16 - 1
+        response.flags &= all_ones ^ (dns.flags.RD | dns.flags.RA)
+        response.flags |= (dns.flags.QR | dns.flags.AA)
+
+        answer_rrset = response.find_rrset(
+                                    response.answer, self.request.question[0].name,
+                                    rdcls.IN, rdtype.SOA, create=True
+                                )
+        answer_rrset.ttl = config.default_ttl
+        
+        answer_rrset.add(
+                rdata.from_text(rdcls.IN, rdtype.SOA,
+                                '{}. {}. 1 {} {} 86400 {}'.format(
+                                    '.'.join(config.rkvdns_fqdn),
+                                    '.'.join(config.soa_contact),
+                                    config.default_ttl, config.default_ttl, config.min_ttl
+                            )
+                    )
+            )
+
+        self.edns_fixup()
+
+        return self
+    
+    def ns(self):
+        config = self.response_config
+        if not config.rkvdns_fqdn:
+            return self.servfail('NS not available')
+
+        response = self.response = dns.message.make_response(self.request)
+        response.set_rcode(rcode.NOERROR)
+
+        all_ones = 2**16 - 1
+        response.flags &= all_ones ^ (dns.flags.RD | dns.flags.RA)
+        response.flags |= (dns.flags.QR | dns.flags.AA)
+
+        answer_rrset = response.find_rrset(
+                                    response.answer, self.request.question[0].name,
+                                    rdcls.IN, rdtype.NS, create=True
+                                )
+        answer_rrset.ttl = config.default_ttl
+        answer_rrset.add(
+                rdata.from_text(rdcls.IN, rdtype.NS,
+                                '{}.'.format( '.'.join(config.rkvdns_fqdn) )
+                    )
+            )
+
+        self.edns_fixup()
+
+        return self
+    
     def ttl(self, query):
         ttl = query.ttl
         if ttl is None:

@@ -131,6 +131,18 @@ Invalid parameter:
     LINDEX and LRANGE expect an integer or an integer range respectively.
     Returns FORMERR.
     
+NS and SOA Record Synthesis
+---------------------------
+
+As documented in the sample configuration file, NS and SOA records will be
+synthesized if RKVDNS_FQDN (nameserver name) and SOA_CONTACT (zone admin
+email) are specified. The records are constructed from the various configuration
+values as follows:
+
+    <ZONE> <DEFAULT_TTL> IN NS <RKVDNS_FQDN>
+
+    <ZONE> <DEFAULT_TTL> IN SOA <RKVDNS_FQDN> <SOA_CONTACT> 1 <DEFAULT_TTL> <DEFAULT_TTL> 86400 <MIN_TTL>
+
 DNS-Imposed Limitations
 -----------------------
 
@@ -244,6 +256,9 @@ QUEUE_DEPTH = None
 ENABLE_ERROR_TXT = False
 LEAK_SEMAPHORE_IF_EXCEPTION = False
 
+RKVDNS_FQDN = None
+SOA_CONTACT = None
+
 # This is the Redis key which we use for orchestrating tests.
 CONTROL_KEY = None
 
@@ -256,6 +271,13 @@ else:
     ZONE = 'redis.example.com'
 
 ZONE = [ label.lower().encode() for label in ZONE.strip('.').split('.') ]
+
+# These two are not encoded because they're fed to rdata.from_text() and it
+# doesn't seem to like byte strings.
+if RKVDNS_FQDN is not None:
+    RKVDNS_FQDN = [ label.lower() for label in RKVDNS_FQDN.strip('.').split('.') ]
+if SOA_CONTACT is not None:
+    SOA_CONTACT = [ label.lower() for label in SOA_CONTACT.strip('.').split('.') ]
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
@@ -370,6 +392,8 @@ def main():
                         control_key         = CONTROL_KEY,
                         enable_error_txt    = ENABLE_ERROR_TXT,
                         zone                = ZONE,
+                        rkvdns_fqdn         = RKVDNS_FQDN,
+                        soa_contact         = SOA_CONTACT,
                         # These are for test scaffolding, but have no other impact.
                         redis_server        = redis_server,
                         redis_timeout       = 5

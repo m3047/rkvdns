@@ -40,7 +40,7 @@ class Controller(object):
     ALLOWED_QUERY_TYPES = {
             rdtype.A, rdtype.AAAA, rdtype.TXT
         }
-
+    
     def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics):
         self.pending_queue = pending_queue
         self.response_queue = response_queue
@@ -80,7 +80,7 @@ class Controller(object):
             ))
         req.formerr('Operation not specified.')
         return req
-                
+    
     def parameter_error(self, req, e):
         logging.error('FORMERR: {} in: {} from: {}'.format(
                 repr(e), req.request.question[0].name.to_text(), req.plug.query_address
@@ -114,24 +114,37 @@ class Controller(object):
             else:
                 timer = None
             
-            qtype = req.request.question[0].rdtype
-            if not req.response_config.all_queries_as_txt and qtype not in self.ALLOWED_QUERY_TYPES:
-                await self.response_queue.write( self.qtype_not_allowed(req, qtype) )
-                if timer is not None:
-                    timer.stop()
-                continue
             qlabels = list(req.request.question[0].name.labels)            
             if not qlabels[-1]:
                 del qlabels[-1]
             zlen = len(self.zone) * -1
 
+            # Correct zone?
             if self.zone[zlen:] != [ label.lower() for label in qlabels[zlen:] ]:
                 await self.response_queue.write( self.nxdomain(req) )
                 if timer is not None:
                     timer.stop()
                 continue
+
+            qtype = req.request.question[0].rdtype
+
+            # Just the naked zone, no redis query?
             if len(qlabels) == len(self.zone):
-                await self.response_queue.write( self.no_operation(req) )
+                if   qtype == rdtype.SOA:
+                    req = req.soa()
+                elif qtype == rdtype.NS:
+                    req = req.ns()
+                else:
+                    req = self.no_operation(req)
+
+                await self.response_queue.write( req )
+                if timer is not None:
+                    timer.stop()
+                continue
+
+            # This is a redis query.
+            if not req.response_config.all_queries_as_txt and qtype not in self.ALLOWED_QUERY_TYPES:
+                await self.response_queue.write( self.qtype_not_allowed(req, qtype) )
                 if timer is not None:
                     timer.stop()
                 continue
