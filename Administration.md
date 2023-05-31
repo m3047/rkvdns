@@ -24,7 +24,68 @@ PROXY.REDIS.EXAMPLE.COM.  IN NS   REDIS.EXAMPLE.COM.
 
 If you query a caching nameserver now, `foo.get.proxy.redis.example.com.` should do what you want.
 
-### A pretty name
+The foregoing is not quite the whole story, although it will probably work. The DNS uses metadata
+records to make informed decisions when it crosses zone boundaries, specifically the `SOA` and
+`NS` records. There are two variables which you can set in `configuration.py` which will allow
+_RKVDNS_ to synthesize these records:
+
+* `RKVDNS_FQDN`: This is the nameserver FQDN. In the example above, this is `REDIS.EXAMPLE.COM`.
+* `SOA_CONTACT`: This is the email address of the party responsible for administering the zone or service.
+
+### In-zone nameservers
+
+In general the same `NS` record(s) published "above the (zone) cut" or delegation should also
+be published within the delegated zone. The DNS calls in-zone nameservers _in bailiwick_. The FQDN
+for the record at the top or _apex_ of a delegated zone is colloquially referred to as the _domain_,
+although internally the DNS specification refers to all FQDNs as "domains".
+
+```
+PROXY.REDIS.EXAMPLE.COM IN NS   REDIS.EXAMPLE.COM.
+```
+
+This is literally the same as what you published in the zone file for `example.com` above the zone
+cut or delegation. In `configuration.py` you should assign the FQDN for the RKVDNS server to the
+variable `RKVDNS_FQDN`. _RKVDNS_ uses the value of `ZONE` for the lefthand side (owner name) of the `NS` record and the value of
+`RKVDNS_FQDN` for the righthand side (rdata).
+
+So for instance the `NS` record shown above is synthesized from the following two configuration
+variable settings:
+
+```
+ZONE = 'PROXY.REDIS.EXAMPLE.COM'
+RKVDNS_FQDN = 'REDIS.EXAMPLE.COM'
+```
+
+### SOA record
+
+___The service DOES NOT support zone transfers.___
+
+The other magic record is the `SOA` record, which is also published at the apex of the delegated zone.
+Some DNS servers or services may check for the presence of an `SOA` record to determine whether a
+delegation is "valid" or not.
+
+The other thing that the `SOA` record provides is information for automating zone data transfers; _RKVDNS_
+does not support zone transfers.
+
+```
+PROXY.REDIS.EXAMPLE.COM IN SOA  REDIS.EXAMPLE.COM. DNS-ADMIN.EXAMPLE.COM. 1 30 30 86400 5
+```
+
+The `SOA_CONTACT` value is required to synthesize this record. That particular `SOA` record will be synthesized
+from the following configuration variable settings:
+
+```
+MIN_TTL = 5
+DEFAULT_TTL = 30
+ZONE = 'PROXY.REDIS.EXAMPLE.COM'
+RKVDNS_FQDN = 'REDIS.EXAMPLE.COM'
+SOA_CONTACT = 'DNS-ADMIN.EXAMPLE.COM'
+```
+
+**NOTE:** The `@` sign is replaced with a `.` in the email address, so `dns-admin@example.com` should be
+specified as `dns-admin.example.com`.
+
+## A pretty name
 
 Maybe you need a shorter and more memorable name, or the selection criteria is subject to change.
 
@@ -46,9 +107,6 @@ FOO.REDIS.EXAMPLE.NET.  IN CNAME  foo.get.proxy.redis.example.com.
 
 _Response Policy Zones_ (RPZ) are an extension of DNS mostly used as a "DNS firewall", although they have some
 other uses. We are going to demonstrate some of those uses now!
-
-This is not the "correct" way to set up or administer a zone, I'm not saying it is. It's just a quick way which
-will probably work.
 
 You should be running RPZ on a caching nameserver. You will need to query that nameserver or a nameserver which forwards
 to it for this to work.
@@ -99,28 +157,6 @@ If this was one of the following examples I would just refer to
 ```
 *.PANGOLIN IN CNAME .
 ```
-
-### SOA record
-
-___The service DOES NOT support zone transfers.___
-
-You may need an `SOA` record. The following in an RPZ will do the trick:
-
-```
-PROXY.REDIS.EXAMPLE.COM IN SOA  REDIS.EXAMPLE.COM. OPERATOR.EXAMPLE.COM. 1 999999 999999 999999 5
-```
-`1` is the serial number, and `5` is whatever MIN_TTL is set to. The other three parameters are all pertinent
-to zone transfers and should be set to large values.
-
-### In-zone nameservers
-
-The DNS calls in-zone nameservers _in bailiwick_.
-
-```
-PROXY.REDIS.EXAMPLE.COM IN NS   REDIS.EXAMPLE.COM.
-```
-
-This is arguably useless if the caching nameserver is also authoritative for `example.com` (the enclosing zone).
 
 ### DNS application firewall
 
