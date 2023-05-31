@@ -466,6 +466,8 @@ class Request(object):
     
     def ttl(self, query):
         ttl = query.ttl
+        if ttl is not None and ttl <= 0:
+            ttl = None
         if ttl is None:
             ttl = self.response_config.default_ttl
         if   ttl < self.response_config.min_ttl:
