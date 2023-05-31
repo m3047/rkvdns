@@ -53,11 +53,11 @@ DEFAULT_CONFIG = dict(
         max_udp_payload = 1200,
         max_tcp_payload = 60000,
         max_value_payload = 255,
-        return_partial_tcp = False,
-        return_partial_value = False,
+        return_partial_tcp = 'False',
+        return_partial_value = 'False',
             
-        all_queries_as_txt = False,
-        case_folding = None,
+        all_queries_as_txt = 'False',
+        case_folding = 'None',
 
         max_ttl = 3600,
         default_ttl = 30,
@@ -98,7 +98,7 @@ class TestOptions(WithRedis):
     """Tests the effects of various configuration settings."""
     
     def test_all_queries_txt(self):
-        self.set_config(all_queries_as_txt=True)
+        self.set_config(all_queries_as_txt='True')
         key = config.CONTROL_KEY + '_all_queries_txt'
         self.redis.set(key,'1.3.3.7')
         resp = self.resolver.query(key + '.get.' + self.zone, 'A', raise_on_no_answer=False)
@@ -193,7 +193,7 @@ class TestQueries(WithRedis):
             rdtype.CNAME: lambda rr: self.assertTrue( re.match('\d+[.]error[.]', rr.to_text().lower()) ),
             rdtype.TXT:   lambda rr: self.assertTrue( rr.to_text().strip('"').lower().startswith('parameter error: redisoperanderror') )
         }
-        self.set_config(enable_error_txt=True)
+        self.set_config(enable_error_txt='True')
         resp = self.resolver.query('foo.'+self.zone,'TXT')
         for rrset in resp.response.answer:
             ASSERTS[rrset.rdtype](rrset[0])
@@ -355,7 +355,7 @@ class TestQueries(WithRedis):
         return
         
     def test_tcp_too_large_as_txt(self):
-        self.set_config(max_tcp_payload=3000, enable_error_txt=True)
+        self.set_config(max_tcp_payload=3000, enable_error_txt='True')
         key = config.CONTROL_KEY + '_tcp_large_as_txt'
         total = 0
         i = b'A'
