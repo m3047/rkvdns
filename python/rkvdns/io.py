@@ -1148,7 +1148,7 @@ class RedisIO(object):
 
         await callback
 
-        if not (exc is None and self.leak_semaphore_if_exception):
+        if exc is None or not self.leak_semaphore_if_exception:
             self.semaphore.release()
         self.finishers.remove(promise[0])
 
