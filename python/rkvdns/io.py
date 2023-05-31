@@ -766,11 +766,11 @@ class DnsIOControl(object):
             else:
                 timer_category = 'udp'
 
-            # Adding the writer to active_writers and pinning the Task into the writer
+            # Adding the writer to active_writers and pinning the Task into the plug
             # keeps the Task strong until the write finishes and write() can remove
             # itself.
             self.active_writers.add(writer.plug)
-            writer.writing = self.event_loop.create_task(
+            writer.plug.writing = self.event_loop.create_task(
                     writer.plug.write(
                         wire_task, write_timer, self.active_writers
                 )   )
