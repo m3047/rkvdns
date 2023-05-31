@@ -767,7 +767,7 @@ class DnsIOControl(object):
             # Adding the writer to active_writers and pinning the Task into the writer
             # keeps the Task strong until the write finishes and write() can remove
             # itself.
-            self.active_writers.add(writer)
+            self.active_writers.add(writer.plug)
             writer.writing = self.event_loop.create_task(
                     writer.plug.write(
                         wire_task, write_timer, self.active_writers
