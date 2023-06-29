@@ -66,6 +66,8 @@ import logging
 import traceback
 from math import floor
 
+from time import time
+
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
@@ -113,13 +115,15 @@ class UdpPlug(DnsPlug):
     def __init__(self, address, transport):
         """Address in this case encapsulates the remote address+port."""
         self.address = address
+        self.query_address = address[0]
         self.transport = transport
         self.writing = None     # Set prior to calling write()
         return
     
     @property
-    def query_address(self):
-        return self.address[0]
+    def is_connected(self):
+        """Only applies to TCP, so UDP always returns True."""
+        return True
         
     async def write(self, response, timer, active_writers):
         if PRINT_COROUTINE_ENTRY_EXIT:
@@ -142,13 +146,14 @@ class TcpPlug(DnsPlug):
     def __init__(self, stream):
         self.semaphore = None   # Set prior to calling write()
         self.stream = stream
+        self.query_address = stream.writer.get_extra_info('peername')
         self.writing = None     # Set prior to calling write()
         return
-    
+
     @property
-    def query_address(self):
-        return self.stream.writer.get_extra_info('peername')
-        
+    def is_connected(self):
+        return self.stream.writer is not None
+    
     async def write(self, response, timer, active_writers):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('> TcpPlug.write')
@@ -228,6 +233,19 @@ class ResponseConfig(object):
 # DNS I/O
 #################################################################################
 
+#class CountingDict(dict):
+    #def inc(self, k, v=1):
+        #if k not in self:
+            #self[k] = 0
+        #self[k] += v
+        #return
+    #def start(self, k):
+        #self[k] = time() * -1
+        #return
+    #def stop(self, k):
+        #self[k] += time()
+        #return
+
 class Request(object):
     """Encapsulates both TCP and UDP DNS requests in a unified model."""
     
@@ -239,6 +257,8 @@ class Request(object):
     STATISTICS_TYPES = ('udp_drop', 'udp', 'tcp')
     REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value', 'all_queries_as_txt', 'case_folding', 'enable_error_txt')
     REDIS_FIXUP_VALUES = { 'False':False, 'True':True, 'None':None }
+    
+    RDATA_HEADER_LENGTH = 13
     
     @classmethod
     def statistics_collector(cls, statistics):
@@ -252,14 +272,22 @@ class Request(object):
         self.plug = plug
         # self.udp_limit -- edns_fixup()
         # self.response_config -- with_config()
+        
+        # NOTE: The following diagnostics provide timing, iteration and size statistics
+        # for requests. Uncomment the definition of CountingDict and the occurrences
+        # of proc_stats in Request and DnsIOControl.write_control.
+        #self.proc_stats = CountingDict()
+
         return
 
     @classmethod
     def UdpIO(cls, *args):
+        """A Request with a UdpPlug."""
         return cls( UdpPlug(*args) )
     
     @classmethod
     def TcpIO(cls, *args):
+        """A Request with a TcpPlug."""
         return cls( TcpPlug(*args) )
     
     def from_wire(self, request):
@@ -490,8 +518,50 @@ class Request(object):
         # Is it an integer? This will kick a ValueError exception upstairs.
         return cls(int(v))
     
+    def payload_size_precalc(self, results):
+        """Is the number of records returned vaguely sane?
+        
+        Two things happen here. First if it's completely not sane the method
+        returns False. Second if it's not sane, the results
+        list is truncated to minimize downstream processing.
+        
+        The precalculation consists of the sum of:
+        
+        * the length of result strings
+        * 13 * the number of strings
+        * the length of the qname
+        """
+        config = self.response_config
+        
+        all_results = sum( len(x) for x in results )
+        headers = len(results) * self.RDATA_HEADER_LENGTH
+        qname = len(self.request.question[0].name.to_text())
+        # There's an additional 20 bytes, give or take, which is not accounted for.
+        
+        length = all_results + headers + qname
+        
+        if length > config.max_tcp_payload and not config.return_partial_tcp:
+            return False
+        
+        # We do this because we're going to truncate anyway in this case and
+        # return TC=1 but this makes it go faster.
+        if isinstance(self.plug, UdpPlug) and length > config.max_udp_payload:
+            length = qname
+            for i in range(len(results)):
+                length += self.RDATA_HEADER_LENGTH + len(results[i])
+                if length > config.max_udp_payload:
+                    break
+            
+            # 2 is a magic number, but it's just a ballpark, "just enough". The
+            # overages we're truly concerned about are massive: 100s or 1000s. The
+            # point of triggering an overage is to cause TC=1 to be emitted.
+            del results[i+2:]
+        
+        return True
+    
     def noerror(self, query):
         """NOERROR / success -- FLUENT"""
+        #self.proc_stats.start('NOERROR overall')
         response = self.response = dns.message.make_response(self.request)
         response.set_rcode(rcode.NOERROR)
 
@@ -519,8 +589,18 @@ class Request(object):
                 convert = lambda v:self.convert_to_address(v,IPv4Address).exploded
             elif rdata_type == rdtype.AAAA:
                 convert = lambda v:self.convert_to_address(v,IPv6Address).exploded
+        results = query.results()
+        
+        #self.proc_stats.inc('rdatas raw pre', sum(len(value) for value in results))
+
+        # Precalculation mitigates requests for impossibly large payloads gumming
+        # up the works. As a side effect, results can be updated.
+        if not self.payload_size_precalc(results):
+            return self.servfail('Impossibly large payload.')
+
         rdatas = []
-        for value in query.results():
+        for value in results:
+            #self.proc_stats.inc('rdatas raw after', len(value))
             try:
                 v = to_rdata( convert( value ) )
                 if v:
@@ -530,6 +610,8 @@ class Request(object):
                     self.request.question[0].name.to_text(), rdtype.to_text(rdata_type), self.plug.query_address
                 ))
 
+        #self.proc_stats.start('rdatas elapsed')
+        #self.proc_stats.inc('rdatas count', len(rdatas))
         if len(rdatas):
             answer_rrset = response.find_rrset(
                                         response.answer, self.request.question[0].name,
@@ -549,6 +631,7 @@ class Request(object):
                         else:
                             continue
                 answer_rrset.add(rr)
+        #self.proc_stats.stop('rdatas elapsed')
 
         self.edns_fixup()
 
@@ -560,6 +643,7 @@ class Request(object):
         This is simplistic because it assumes that there is nothing
         other than the ANSWER section which is populated.
         """
+        #self.proc_stats.start('truncate')
         question = self.request.question[0]
         response = self.response
         answer_rrset = response.find_rrset(
@@ -570,8 +654,11 @@ class Request(object):
                         lambda fr: not (fr.exc or len(fr.result) > limit),
                         response.to_wire, max_size=65535, exceptions=TooBig
                     )
+        #self.proc_stats.inc('truncate before', len(answer_rrset))
         while not to_wire():
+            #self.proc_stats.inc('truncate iterations')
             if to_wire.exc:
+                #self.proc_stats.inc('to_wire() exceptions')
                 if isinstance(to_wire.exc, TooBig):
                     wire_len = 65535 * 2
                 else:
@@ -591,11 +678,13 @@ class Request(object):
                     else:
                         response.set_rcode(rcode.SERVFAIL)
             overage = limit / wire_len
-            new_length = floor(len(answer_rrset) * overage)
+            new_length = floor(len(answer_rrset) * overage * 0.9)
+            #self.proc_stats.inc('truncate removals', len(answer_rrset)-new_length)
             for rr in list(answer_rrset)[new_length:]:
                 answer_rrset.remove(rr)
             if not len(answer_rrset):
                 break
+        #self.proc_stats.inc('truncate after', len(answer_rrset))
         
         if udp:
             response.flags |= dns.flags.TC
@@ -604,7 +693,8 @@ class Request(object):
         if to_wire.exc:
             raise to_wire.exc
         
-        return to_wire.result        
+        #self.proc_stats.stop('truncate')
+        return to_wire.result
 
     def to_wire(self):
         """Converts a response to wire format and returns it."""
@@ -741,12 +831,25 @@ class DnsIOControl(object):
                 write_timer = self.write_stats.start_timer()
             else:
                 write_timer = None
+
+            question = writer.request.question[0]
+
+            # If TCP and the writer is gone then the client decided we timed out.
+            if not writer.plug.is_connected:
+                logging.error('Client disconnected, likely timeout: {} {} {}'.format(
+                    writer.plug.query_address, question.name.to_text(), rdtype.to_text(question.rdtype)
+                ) )
+                if writer.timer is not None:
+                    writer.timer.stop(timer_category)
+                    write_timer.stop()
+                if PRINT_COROUTINE_ENTRY_EXIT:
+                    PRINT_COROUTINE_ENTRY_EXIT('< write_control ({})'.format(writer.request.id))
+                continue
             
             # Send the selected response.
             try:
                 wire_task = writer.to_wire()
             except Exception as e:
-                question = writer.request.question[0]
                 logging.error('Conversion to wire format failed: {} {} {} {}\n{}'.format(
                     e,
                     writer.plug.query_address, question.name.to_text(), rdtype.to_text(question.rdtype),
@@ -758,6 +861,12 @@ class DnsIOControl(object):
                 if PRINT_COROUTINE_ENTRY_EXIT:
                     PRINT_COROUTINE_ENTRY_EXIT('< write_control ({})'.format(writer.request.id))
                 continue
+            
+            #writer.proc_stats.stop('NOERROR overall')
+            
+            #print('{}:'.format(question.name.to_text()))
+            #for item in sorted(writer.proc_stats.items()):
+                #print('  {:<20s}: {:>6.3f}'.format(*item))
 
             if isinstance(writer.plug, TcpPlug):
                 await tcp_pending.acquire()
