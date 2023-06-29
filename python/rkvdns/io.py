@@ -254,7 +254,7 @@ class Request(object):
     HAS_EDNS_FLAG = 0
     REDIS = None        # For tests / debugging.
     
-    STATISTICS_TYPES = ('udp_drop', 'udp', 'tcp')
+    STATISTICS_TYPES = ('udp_drop', 'debounce', 'udp', 'tcp')
     REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value', 'all_queries_as_txt', 'case_folding', 'enable_error_txt')
     REDIS_FIXUP_VALUES = { 'False':False, 'True':True, 'None':None }
     
@@ -837,6 +837,8 @@ class DnsIOControl(object):
 
             question = writer.request.question[0]
 
+            timer_category = isinstance(writer.plug, TcpPlug) and 'tcp' or 'udp'
+
             # If TCP and the writer is gone then the client decided we timed out.
             if not writer.plug.is_connected:
                 logging.error('Client disconnected, likely timeout: {} {} {}'.format(
@@ -874,9 +876,6 @@ class DnsIOControl(object):
             if isinstance(writer.plug, TcpPlug):
                 await tcp_pending.acquire()
                 writer.plug.semaphore = tcp_pending
-                timer_category = 'tcp'
-            else:
-                timer_category = 'udp'
 
             # Adding the writer to active_writers and pinning the Task into the plug
             # keeps the Task strong until the write finishes and write() can remove

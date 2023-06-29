@@ -13,6 +13,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Control."""
 
+from time import time
+
 import logging
 import traceback
 import asyncio
@@ -24,6 +26,29 @@ from . import io
 # Start/end of coroutines.
 PRINT_COROUTINE_ENTRY_EXIT = None
 
+class Debouncer(object):
+    """Time-bounded duplicate detector."""
+    def __init__(self, seconds=5):
+        """Default is to debounce for 5 seconds."""
+        self.seconds = 5
+        self.buckets = []
+        self.last = int(time())
+        return
+    
+    def is_duplicate(self, k):
+        """If the key has been seen in the last 5 seconds, return True."""
+        now = int(time())
+        if now > self.last:
+            while now > self.last:
+                self.buckets.insert(0,set())
+                self.last += 1
+            del self.buckets[self.seconds:]
+        for bucket in self.buckets:
+            if k in bucket:
+                return True
+        self.buckets[0].add(k)
+        return False
+    
 class Controller(object):
     """Responsible for logical handling of requests.
     
@@ -101,6 +126,7 @@ class Controller(object):
 
     async def process_pending_queue(self):
         """If everything looks good, calls io.RedisIO.submit()"""
+        debouncer = Debouncer()
         while True:
             req = await self.pending_queue.get()
                         
@@ -114,6 +140,7 @@ class Controller(object):
             else:
                 timer = None
             
+            # NOTE: This is the point at which the Request.request promise is finalized.
             qlabels = list(req.request.question[0].name.labels)            
             if not qlabels[-1]:
                 del qlabels[-1]
@@ -149,6 +176,20 @@ class Controller(object):
                     timer.stop()
                 continue
             
+            # Debouncing.
+            if isinstance(req.plug, io.UdpPlug):
+                if debouncer.is_duplicate((
+                        req.plug.query_address,
+                        req.request.question[0].name.to_text().lower(),
+                        req.request.question[0].rdtype
+                    )):
+                    # Drop it on the floor.
+                    if timer is not None:
+                        timer.stop()
+                        req.timer.stop('debounce')
+                    continue
+            
+            # Ok, looks good.
             try:
                 query = io.RedisQuery(qlabels[:zlen], req.response_config.folder).finalize()
             except io.RedisError as e:
