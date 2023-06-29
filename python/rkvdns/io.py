@@ -596,7 +596,10 @@ class Request(object):
         # Precalculation mitigates requests for impossibly large payloads gumming
         # up the works. As a side effect, results can be updated.
         if not self.payload_size_precalc(results):
-            return self.servfail('Impossibly large payload.')
+            if config.nxdomain_for_servfail:
+                return self.nxdomain('Impossibly large payload.')
+            else:
+                return self.servfail('Impossibly large payload.')
 
         rdatas = []
         for value in results:
@@ -622,12 +625,12 @@ class Request(object):
                 if rdata_type == rdtype.TXT:
                     # There is really ever only one string because we set it explicitly above.
                     rd = b''.join(rr.strings)
-                    if len(rd) > self.response_config.max_value_payload:
+                    if len(rd) > config.max_value_payload:
                         logging.warn('Max single value length ({}) exceeded for {} from {}'.format(
-                            self.response_config.max_value_payload, self.request.question[0].name.to_text(), self.plug.query_address
+                            config.max_value_payload, self.request.question[0].name.to_text(), self.plug.query_address
                         ))
-                        if self.response_config.return_partial_value:
-                            rr.strings[0] = rd[:self.response_config.max_value_payload]
+                        if config.return_partial_value:
+                            rr.strings[0] = rd[:config.max_value_payload]
                         else:
                             continue
                 answer_rrset.add(rr)

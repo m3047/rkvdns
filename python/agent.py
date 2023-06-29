@@ -241,6 +241,7 @@ MAX_TCP_PAYLOAD = 60000
 MAX_VALUE_PAYLOAD = 255
 RETURN_PARTIAL_TCP = False
 RETURN_PARTIAL_VALUE = False
+NXDOMAIN_FOR_SERVFAIL = False
     
 ALL_QUERIES_AS_TXT = False
 CASE_FOLDING = None
@@ -384,6 +385,7 @@ def main():
                         max_value_payload   = MAX_VALUE_PAYLOAD,
                         return_partial_tcp  = RETURN_PARTIAL_TCP,
                         return_partial_value= RETURN_PARTIAL_VALUE,
+                        nxdomain_for_servfail=NXDOMAIN_FOR_SERVFAIL,
                         max_ttl             = MAX_TTL,
                         default_ttl         = DEFAULT_TTL,
                         min_ttl             = MIN_TTL,

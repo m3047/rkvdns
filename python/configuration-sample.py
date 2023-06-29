@@ -29,6 +29,10 @@
 #RETURN_PARTIAL_TCP = False
 # If true, individual values are truncated rather than omitted if too large.
 #RETURN_PARTIAL_VALUE = False
+# If True, then if MAX_TCP_PAYLOAD would be exceeded (even if, or especially if,
+# the request is via UDP) the server returns NXDOMAIN instead of SERVFAIL. This
+# does not affect logging.
+#NXDOMAIN_FOR_SERVFAIL = False
 
 # Regardless of the query type, the result is always TXT if True.
 #ALL_QUERIES_AS_TXT = False
