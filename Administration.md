@@ -237,6 +237,31 @@ foo.bar.redis.sophia.m3047. 30  IN      CNAME   511124793.error.redis.sophia.m30
 
 In this case `bar` was not a recognized operand.
 
+## NXDOMAIN instead of SERVFAIL
+
+If the data retrieved from a Redis query is impossibly large for DNS (exceeds `MAX_TCP_PAYLOAD`) and `RETURN_PARTIAL_TCP` is not enabled,
+the server has returned a status of `SERVFAIL`. This is arguably the correct response (further information should be in the server logs),
+however it doesn't propagate through caching resolvers reliably and may have undesirable side effects such as encouraging them to 
+"try again"! Setting `NXDOMAIN_FOR_SERVFAIL` to `True` causes `NXDOMAIN` to be returned which has semantics which will cause the caching
+resolver to conclude "this does not exist" for a short duration of time.
+
+In-band signaling to the client is problematic in the DNS, see _Errors as TXT_ above.
+
+## Debouncing
+
+The server performs debouncing of requests. Only the first UDP request for a `( <peer-address>, <qname>, <qtype> )` tuple received in
+a five second window is processed, subsequent requests for the same tuple in the window are dropped.
+
+People may say this is "technically" incorrect: multiple clients on the peer host might coincidentally make the same request at
+rougly the same time and this approach fails to take account of it. I have noticed that people who say "technically" generally haven't taken the
+time to analyze the specific operating environment technically.
+
+Technically, all clients on a host should be using the system resolver; hopefully it caches (see `nscd` although I have mixed feelings
+about it).
+
+In the specific case of _RKVDNS_ deployments, a nameserver such as _BIND_ SHOULD be deployed in front of it as discussed
+elsewhere in this document. Clients using _The DNS_ SHOULD be directed to such a server rather than accessing the
+RKVDNS service directly.
 
 -------------------
 
