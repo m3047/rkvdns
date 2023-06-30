@@ -9,4 +9,4 @@ Once you've installed `dnspython` and the (python) `redis` package and created `
 to run `./agent.py` from this directory.
 
 **TIP: Not seeing any data, but you know the key is defined? The default query type for most DNS tools is the `A` record type.
-try specifying `TXT` in your query, for example `dig @127.0.0.1 foo.get.proxy.redis.example.com. TXT`**
+Try specifying `TXT` in your query, for example `dig @127.0.0.1 foo.get.proxy.redis.example.com. TXT`**
