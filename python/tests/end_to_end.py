@@ -194,7 +194,7 @@ class TestQueries(WithRedis):
             rdtype.TXT:   lambda rr: self.assertTrue( rr.to_text().strip('"').lower().startswith('parameter error: redisoperanderror') )
         }
         self.set_config(enable_error_txt='True')
-        resp = self.resolver.query('foo.'+self.zone,'TXT')
+        resp = self.resolver.query('bar.'+self.zone,'TXT')
         for rrset in resp.response.answer:
             ASSERTS[rrset.rdtype](rrset[0])
         return
