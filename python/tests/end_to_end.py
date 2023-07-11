@@ -376,6 +376,50 @@ class TestQueries(WithRedis):
         self.assertTrue(isinstance(resp.response.answer[0][0], A))
         self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.1')
         return
+    
+    def test_hlen(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_hlen'
+        self.redis.hset(key, b'foo', 33)
+        self.redis.hset(key, b'bar', 44)
+        resp = self.resolver.query(key + '.hlen.' + self.zone, 'A')
+        self.assertTrue(isinstance(resp.response.answer[0][0], A))
+        self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.2')
+        return
+    
+    def test_klen(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_klen_'
+        self.redis.incr(key + 'foo')
+        self.redis.incr(key + 'bar')
+        self.redis.incr(key + 'baz')
+        resp = self.resolver.query(key + '*.klen.' + self.zone, 'A')
+        self.assertTrue(isinstance(resp.response.answer[0][0], A))
+        self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.3')
+        return
+    
+    def test_llen(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_llen_'
+        self.redis.lpush(key, b'first')
+        self.redis.lpush(key, b'second')
+        self.redis.lpush(key, b'third')
+        resp = self.resolver.query(key + '.llen.' + self.zone, 'A')
+        self.assertTrue(isinstance(resp.response.answer[0][0], A))
+        self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.3')
+        return
+    
+    def test_scard(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_scard_'
+        self.redis.sadd(key, b'foo')
+        self.redis.sadd(key, b'bar')
+        self.redis.sadd(key, b'baz')
+        self.redis.sadd(key, b'zeep')
+        resp = self.resolver.query(key + '.scard.' + self.zone, 'A')
+        self.assertTrue(isinstance(resp.response.answer[0][0], A))
+        self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.4')
+        return
 
 if __name__ == '__main__':
     print('Using control key "{}" at redis {}'.format(config.CONTROL_KEY, config.REDIS_SERVER))

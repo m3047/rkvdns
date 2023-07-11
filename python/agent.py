@@ -48,6 +48,14 @@ HKEYS -- Keys in a Hash
     
     foo.hkeys.redis.example.com
     
+HLEN -- Number of Elements in a Hash
+
+    <key>.hlen.<zone>
+    
+    Get the number of elements in the "foo" hash:
+    
+    foo.hlen.redis.example.com
+    
 KEYS -- Keys Matching a Pattern
 
     <pattern>.keys.<zone>
@@ -56,6 +64,14 @@ KEYS -- Keys Matching a Pattern
     
     foo*.keys.redis.example.com
     
+KLEN -- Number of Keys Matching a Pattern
+
+    <pattern>.klen.<zone>
+    
+    Get the count of keys starting with "foo":
+    
+    foo*.klen.redis.example.com
+
 LINDEX -- Nth Element of a List
 
     <index>.<key>.lindex.<zone>
@@ -65,6 +81,14 @@ LINDEX -- Nth Element of a List
     3.foo.lindex.redis.example.com
     
     An out of bounds index results in no data.
+    
+LLEN -- Number of Elements in a List
+
+    <key>.llen.<zone>
+    
+    Get the length of the "foo" list:
+    
+    foo.llen.redis.example.com
     
 LRANGE -- A Range of Elements of a List
 
@@ -90,6 +114,14 @@ LRANGE -- A Range of Elements of a List
     Out of bounds indices can result in partial or no data.
     
     No ordering of returned results is guaranteed.
+    
+SCARD -- Number of Elements in a Set
+
+    <key>.scard.<zone>
+    
+    Get the number of elements in the "foo" set:
+    
+    foo.scard.redis.example.com
     
 SMEMBERS -- Members of a Set
 

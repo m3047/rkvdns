@@ -595,7 +595,7 @@ class Request(object):
 
         # Precalculation mitigates requests for impossibly large payloads gumming
         # up the works. As a side effect, results can be updated.
-        if not self.payload_size_precalc(results):
+        if results and not (isinstance(results[0], int) or self.payload_size_precalc(results)):
             if config.nxdomain_for_servfail:
                 return self.nxdomain('Impossibly large payload.')
             else:
@@ -1121,6 +1121,13 @@ class RedisHKeysQuery(RedisBaseQuery):
         """Returns a list; may be empty."""
         return conn.hkeys(self.key)
 
+class RedisHLenQuery(RedisBaseQuery):
+    PARAMETERS = ( 'key', 'operand' )
+
+    def query(self, conn):
+        """Returns the number of fields in the hash."""
+        return conn.hlen(self.key)
+    
 class RedisKeysQuery(RedisBaseQuery):
     PARAMETERS = ( 'pattern', 'operand' )
     MULTIVALUED = True
@@ -1141,6 +1148,21 @@ class RedisLIndexQuery(RedisBaseQuery):
     def query(self, conn):
         """Returns value or ???."""
         return conn.lindex(self.key, self.index)
+
+class RedisLengthOfKeysQuery(RedisBaseQuery):
+    PARAMETERS = ( 'pattern', 'operand' )
+    HAS_TTL = False
+
+    def query(self, conn):
+        """Returns the number of keys matching the pattern."""
+        return len(conn.keys(self.pattern))
+    
+class RedisLLenQuery(RedisBaseQuery):
+    PARAMETERS = ( 'key', 'operand' )
+
+    def query(self, conn):
+        """Returns the length of the list."""
+        return conn.llen(self.key)
 
 class RedisLRangeQuery(RedisBaseQuery):
     PARAMETERS = ( 'range', 'key', 'operand' )
@@ -1164,21 +1186,32 @@ class RedisLRangeQuery(RedisBaseQuery):
             irange[1] = -1
         return conn.lrange(self.key, *[ int(bounds) for bounds in irange ] )
 
+class RedisSCardQuery(RedisBaseQuery):
+    PARAMETERS = ( 'key', 'operand' )
+
+    def query(self, conn):
+        """Returns the cardinality of a set."""
+        return conn.scard(self.key)
+
 class RedisSMembersQuery(RedisBaseQuery):
     PARAMETERS = ( 'key', 'operand' )
     MULTIVALUED = True
 
     def query(self, conn):
         """Returns a list; may be empty."""
-        return conn.smembers(self.key)
+        return list(conn.smembers(self.key))
         
 REDIS_QUERY_TYPES = {
         b'get'     : RedisGetQuery,
         b'hget'    : RedisHGetQuery,
         b'hkeys'   : RedisHKeysQuery,
         b'keys'    : RedisKeysQuery,
+        b'klen'    : RedisLengthOfKeysQuery,
+        b'hlen'    : RedisHLenQuery,
         b'lindex'  : RedisLIndexQuery,
+        b'llen'    : RedisLLenQuery,
         b'lrange'  : RedisLRangeQuery,
+        b'scard'   : RedisSCardQuery,
         b'smembers': RedisSMembersQuery
     }
 
