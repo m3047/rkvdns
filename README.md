@@ -67,6 +67,16 @@ The following operations are supported:
 * `LRANGE`
 * `SMEMBERS`
 
+##### "Length-of" Operators
+
+The following "length-of" operators are supported. They return the number of elements (what would be TXT records) for
+the underlying entry:
+
+* `KLEN` -- The number of keys matching a pattern specified with `KEYS`.
+* `HLEN` -- The number of entries in a hash.
+* `LLEN` -- The number of entries in a list.
+* `SCARD` -- The number of entries in a set.
+
 -------------------
 
 For paid support: fwm.rkvdns.support.f2u@m3047.net
