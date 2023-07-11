@@ -77,6 +77,8 @@ the underlying entry:
 * `LLEN` -- The number of entries in a list.
 * `SCARD` -- The number of entries in a set.
 
+The only one of these which doesn't correspond to a _Redis_ operator is `KLEN`.
+
 -------------------
 
 For paid support: fwm.rkvdns.support.f2u@m3047.net
