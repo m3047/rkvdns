@@ -386,7 +386,17 @@ class TestQueries(WithRedis):
         self.assertTrue(isinstance(resp.response.answer[0][0], A))
         self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.2')
         return
-    
+
+    def test_hlen_txt(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_hlen_txt'
+        self.redis.hset(key, b'foo', 33)
+        self.redis.hset(key, b'bar', 44)
+        resp = self.resolver.query(key + '.hlen.' + self.zone, 'TXT')
+        self.assertTrue(isinstance(resp.response.answer[0][0], TXT))
+        self.assertEqual(resp.response.answer[0][0].strings[0], b'2')
+        return
+
     def test_klen(self):
         self.set_config()
         key = config.CONTROL_KEY + '_klen_'
@@ -398,6 +408,17 @@ class TestQueries(WithRedis):
         self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.3')
         return
     
+    def test_klen_txt(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_klen_txt_'
+        self.redis.incr(key + 'foo')
+        self.redis.incr(key + 'bar')
+        self.redis.incr(key + 'baz')
+        resp = self.resolver.query(key + '*.klen.' + self.zone, 'TXT')
+        self.assertTrue(isinstance(resp.response.answer[0][0], TXT))
+        self.assertEqual(resp.response.answer[0][0].strings[0], b'3')
+        return
+
     def test_llen(self):
         self.set_config()
         key = config.CONTROL_KEY + '_llen_'

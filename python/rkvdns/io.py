@@ -559,6 +559,12 @@ class Request(object):
         
         return True
     
+    TXT_CONVERTERS = {
+            str:    lambda v: v.encode(),
+            bytes:  lambda v: v,
+            int:    lambda v: str(v).encode()
+        }
+
     def noerror(self, query):
         """NOERROR / success -- FLUENT"""
         #self.proc_stats.start('NOERROR overall')
@@ -578,7 +584,7 @@ class Request(object):
         #       because the closure changes accordingly.
         rdata_class = rdcls.IN
         rdata_type = rdtype.TXT
-        convert = lambda v: type(v) is str and v.encode() or v
+        convert = lambda v: self.TXT_CONVERTERS[type(v)](v)
         to_rdata = lambda v: TXT(rdata_class, rdata_type, [v])
 
         query_type = self.request.question[0].rdtype
