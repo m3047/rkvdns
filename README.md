@@ -38,6 +38,10 @@ This service picks up TTLs from Redis and propagates them in the DNS cache.
 
 DNS extensions such as _Response Policy Zones_ provide the equivalent of a Web Application Firewall, with access control and query filtering.
 
+### The "Data Diode"
+
+RKVDNS is strictly readonly, simplifying your attack surface assessment for Redis.
+
 ### Use it as DNS!
 
 Sure, why not? If values can be converted to addresses, they will be returned for `A` and `AAAA` queries.
