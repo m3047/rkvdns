@@ -26,11 +26,14 @@ from . import io
 # Start/end of coroutines.
 PRINT_COROUTINE_ENTRY_EXIT = None
 
+# Controls the number of seconds over which debouncing occurs.
+DEBOUNCING_WINDOW = 5   # seconds
+
 class Debouncer(object):
     """Time-bounded duplicate detector."""
-    def __init__(self, seconds=5):
+    def __init__(self, seconds=DEBOUNCING_WINDOW):
         """Default is to debounce for 5 seconds."""
-        self.seconds = 5
+        self.seconds = seconds
         self.buckets = []
         self.last = int(time())
         return
@@ -60,6 +63,10 @@ class Controller(object):
     * Orchestrating queries to Redis
     
     * Composing responses from Redis into DNS responses.
+    
+    Similarly to Response Rate Limiting, if multiple requests for the same
+    (<client-address>, <qname>, <rdata-type>) come in within the (module-level)
+    DEBOUNCING_WINDOW window, the additional requests are dropped.
     """
     
     ALLOWED_QUERY_TYPES = {
