@@ -1163,6 +1163,17 @@ class RedisLengthOfKeysQuery(RedisBaseQuery):
         """Returns the number of keys matching the pattern."""
         return len(conn.keys(self.pattern))
     
+class RedisLengthOfKeysPrefixQuery(RedisBaseQuery):
+    PARAMETERS = ( 'pattern', 'operand' )
+    HAS_TTL = False
+
+    def query(self, conn):
+        """Returns the number of keys matching the pattern.
+        
+        This is for the Ignition SCADA people.
+        """
+        return len(conn.keys(self.pattern + b'*'))
+
 class RedisLLenQuery(RedisBaseQuery):
     PARAMETERS = ( 'key', 'operand' )
 
@@ -1213,6 +1224,7 @@ REDIS_QUERY_TYPES = {
         b'hkeys'   : RedisHKeysQuery,
         b'keys'    : RedisKeysQuery,
         b'klen'    : RedisLengthOfKeysQuery,
+        b'kplen'   : RedisLengthOfKeysPrefixQuery,
         b'hlen'    : RedisHLenQuery,
         b'lindex'  : RedisLIndexQuery,
         b'llen'    : RedisLLenQuery,

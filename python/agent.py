@@ -72,6 +72,22 @@ KLEN -- Number of Keys Matching a Pattern
     
     foo*.klen.redis.example.com
 
+    Get the count of keys ending with "foo":
+    
+    *foo.klen.redis.example.com
+
+KPLEN -- Number of Keys Matching a Prefix
+
+    <prefix>.klen.<zone>
+    
+    Get the count of keys starting with "foo":
+    
+    foo.kplen.redis.example.com
+    
+    Internally the prefix is appended with '*', so "foo" becomes "foo*". This is
+    for people using e.g. Ignition, where the implementation of gethostbyname() is so
+    paranoid it disallows anything which doesn't look like a hostname.
+
 LINDEX -- Nth Element of a List
 
     <index>.<key>.lindex.<zone>
