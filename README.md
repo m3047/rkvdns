@@ -77,11 +77,12 @@ The following "length-of" operators are supported. They return the number of ele
 the underlying entry:
 
 * `KLEN` -- The number of keys matching a pattern specified with `KEYS`.
+* `KPLEN` -- "Key PREFIX length": like `KLEN` but without the need for a wildcard character at the end.
 * `HLEN` -- The number of entries in a hash.
 * `LLEN` -- The number of entries in a list.
 * `SCARD` -- The number of entries in a set.
 
-The only one of these which doesn't correspond to a _Redis_ operator is `KLEN`.
+The only ones of these which doesn't correspond to a _Redis_ operator are `KLEN` and `KPLEN`.
 
 -------------------
 
