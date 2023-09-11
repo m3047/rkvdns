@@ -86,4 +86,4 @@ The only ones of these which doesn't correspond to a _Redis_ operator are `KLEN`
 
 -------------------
 
-For paid support: fwm.rkvdns.support.f2u@m3047.net
+For paid support: fwm.rkvdns.support.f2u@m3047.net (That address... or alias... is real. It's a [Trualias](https://github.com/m3047/trualias/).)
