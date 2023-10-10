@@ -1279,7 +1279,7 @@ class RedisIO(object):
             PRINT_COROUTINE_ENTRY_EXIT('> redis_job')
             
         try:
-            exc = result = ttl = None
+            exc = result = None
             result = query.query(self.redis)
             query.resolve_ttl(self.redis)
         except redis.exceptions.ConnectionError as e:
