@@ -636,7 +636,7 @@ class Request(object):
                             config.max_value_payload, self.request.question[0].name.to_text(), self.plug.query_address
                         ))
                         if config.return_partial_value:
-                            rr.strings[0] = rd[:config.max_value_payload]
+                            rr.strings = [ rd[:config.max_value_payload] ]
                         else:
                             continue
                 answer_rrset.add(rr)
