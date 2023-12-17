@@ -254,7 +254,7 @@ class Request(object):
     HAS_EDNS_FLAG = 0
     REDIS = None        # For tests / debugging.
     
-    STATISTICS_TYPES = ('udp_drop', 'debounce', 'udp', 'tcp')
+    STATISTICS_TYPES = ('udp_drop', 'udp', 'tcp')
     REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value', 'all_queries_as_txt', 'case_folding', 'enable_error_txt')
     REDIS_FIXUP_VALUES = { 'False':False, 'True':True, 'None':None }
     
@@ -297,6 +297,8 @@ class Request(object):
         is accessed the promise is realized.
         """
         self.request_ = None
+        self.qlabels_ = None
+        self.qtype_ = None
         # TCP comes in with the length for consistency.
         self.raw = isinstance(self.plug, TcpPlug) and request[2:] or request
         return self
@@ -354,6 +356,20 @@ class Request(object):
             self.request_ = dns.message.from_wire(self.raw)
             self.raw = None
         return self.request_
+
+    @property
+    def qlabels(self):
+        if self.qlabels_ is None:
+            self.qlabels_ = list(self.request.question[0].name.labels)
+            if not self.qlabels_[-1]:
+                del self.qlabels_[-1]
+        return self.qlabels_
+    
+    @property
+    def qtype(self):
+        if self.qtype_ is None:
+            self.qtype_ = self.request.question[0].rdtype
+        return self.qtype_
     
     def edns_fixup(self):
         """Fix up response EDNS payload size based on configs and the query.
@@ -565,7 +581,7 @@ class Request(object):
             int:    lambda v: str(v).encode()
         }
 
-    def noerror(self, query):
+    def noerror(self):
         """NOERROR / success -- FLUENT"""
         #self.proc_stats.start('NOERROR overall')
         response = self.response = dns.message.make_response(self.request)
@@ -575,6 +591,12 @@ class Request(object):
         response.flags &= all_ones ^ (dns.flags.RD | dns.flags.RA)
         response.flags |= (dns.flags.QR | dns.flags.AA)
 
+        self.edns_fixup()
+
+        return self
+    
+    def answer_from_query(self, query):
+        """Used to be part of noerror(), now deferred."""
         config = self.response_config
         ttl = self.ttl(query)
         
@@ -595,17 +617,8 @@ class Request(object):
                 convert = lambda v:self.convert_to_address(v,IPv4Address).exploded
             elif rdata_type == rdtype.AAAA:
                 convert = lambda v:self.convert_to_address(v,IPv6Address).exploded
-        results = query.results()
-        
-        #self.proc_stats.inc('rdatas raw pre', sum(len(value) for value in results))
 
-        # Precalculation mitigates requests for impossibly large payloads gumming
-        # up the works. As a side effect, results can be updated.
-        if results and not (isinstance(results[0], int) or self.payload_size_precalc(results)):
-            if config.nxdomain_for_servfail:
-                return self.nxdomain('Impossibly large payload.')
-            else:
-                return self.servfail('Impossibly large payload.')
+        results = query.results()
 
         rdatas = []
         for value in results:
@@ -622,6 +635,7 @@ class Request(object):
         #self.proc_stats.start('rdatas elapsed')
         #self.proc_stats.inc('rdatas count', len(rdatas))
         if len(rdatas):
+            response = self.response
             answer_rrset = response.find_rrset(
                                         response.answer, self.request.question[0].name,
                                         rdata_class, rdata_type, create=True
@@ -641,8 +655,6 @@ class Request(object):
                             continue
                 answer_rrset.add(rr)
         #self.proc_stats.stop('rdatas elapsed')
-
-        self.edns_fixup()
 
         return self
     
@@ -697,7 +709,7 @@ class Request(object):
         
         if udp:
             response.flags |= dns.flags.TC
-        
+
         to_wire()
         if to_wire.exc:
             raise to_wire.exc
@@ -705,21 +717,43 @@ class Request(object):
         #self.proc_stats.stop('truncate')
         return to_wire.result
 
-    def to_wire(self):
+    def to_wire(self, tied_requests):
         """Converts a response to wire format and returns it."""
+
+        if tied_requests is None:
+            wire = self.response.to_wire()
+            if isinstance(self.plug, TcpPlug):
+                return len(wire).to_bytes(2, byteorder='big') + wire
+            else:
+                return wire
+        #
+        # From this point forward we're dealing with a successful redis query with a legitimate
+        # answer payload.
+        #
+        if tied_requests.answer is None:
+            # Doesn't matter if udp_limit is passed here, it is ignored if not UDP.
+            tied_requests.add_answer( self.answer_from_query( tied_requests.query ), self.udp_limit )
+        else:
+            self.response.answer = tied_requests.answer
+            if tied_requests.tc:
+                response.flags |= dns.flags.TC
+            
         try:
             wire = self.response.to_wire()
             force_truncate = False
         except TooBig:
             force_truncate = True
-        if isinstance(self.plug, TcpPlug):
+
+        if tied_requests.tcp_or_udp == tied_requests.TCP:
             if force_truncate or len(wire) > self.response_config.max_tcp_payload:
                 wire = self.truncate_response(self.response_config.max_tcp_payload, udp=False)
-            return len(wire).to_bytes(2, byteorder='big') + wire
-        
-        if force_truncate or len(wire) > self.udp_limit:
-            wire = self.truncate_response(self.udp_limit)
-            
+                tied_requests.add_answer(self)
+            wire = len(wire).to_bytes(2, byteorder='big') + wire
+        else:                   #   == tied_requests.UDP
+            if force_truncate or len(wire) > self.udp_limit:
+                wire = self.truncate_response( self.udp_limit, udp=True )
+                tied_requests.add_answer(self, self.udp_limit, tc=True)
+
         return wire
 
 class DnsIOControl(object):
@@ -831,7 +865,7 @@ class DnsIOControl(object):
             pass
         tcp_pending = asyncio.Semaphore(self.response_queue[TcpPlug].maxsize)
 
-        async for writer in self.response_queue.get():
+        async for writer, tied_requests in self.response_queue.get():
 
             if PRINT_COROUTINE_ENTRY_EXIT:
                 PRINT_COROUTINE_ENTRY_EXIT('> write_control ({})'.format(writer.request.id))
@@ -859,7 +893,7 @@ class DnsIOControl(object):
             
             # Send the selected response.
             try:
-                wire_task = writer.to_wire()
+                wire_task = writer.to_wire( tied_requests )
             except Exception as e:
                 logging.error('Conversion to wire format failed: {} {} {} {}\n{}'.format(
                     e,
@@ -879,7 +913,7 @@ class DnsIOControl(object):
             #for item in sorted(writer.proc_stats.items()):
                 #print('  {:<20s}: {:>6.3f}'.format(*item))
 
-            if isinstance(writer.plug, TcpPlug):
+            if timer_category == 'tcp':
                 await tcp_pending.acquire()
                 writer.plug.semaphore = tcp_pending
 
@@ -979,11 +1013,11 @@ class DnsResponseQueue(object):
         # Should never exit.
         raise RuntimeError('Control loop should never exit.')
     
-    async def write(self, req):
+    async def write(self, req, tied_requests=None):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('> DnsResponseQueue.write ({})'.format(req.request.id))
-
-        await self.queue[type(req.plug)].put(req)
+        
+        await self.queue[type(req.plug)].put( (req,tied_requests) )
 
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< DnsResponseQueue.write ({})'.format(req.request.id))
@@ -1041,6 +1075,7 @@ class RedisBaseQuery(object):
     MULTIVALUED = False
     HAS_TTL = True
     INTEGER_VALUE = re.compile(b'-?\d+')
+    MAX_PARAMS = 3  # This should not be changed when subclassed!
     
     def __init__(self, query, folder):
         if len(self.PARAMETERS) != len(query):
@@ -1049,6 +1084,10 @@ class RedisBaseQuery(object):
             if not len(value):
                 raise RedisParameterError()
             object.__setattr__(self, param, value)
+        # parameter_list is used for building the dictionary key for looking up active queries.
+        self.parameter_list = query
+        if len(query) < self.MAX_PARAMS:    # Always either 2 or 3
+            self.parameter_list.insert(0, None)
         # The parameter to the left of the operand is always a key or pattern.
         self.folder = folder
         self.fold(-2)
