@@ -61,7 +61,7 @@ class RequestList(object):
     def payload_size_precalc(self, req):
         if self.precalc_ is None:
             results = self.query.results()
-            if if not results or isinstance(results[0], int):
+            if not results or isinstance(results[0], int):
                 self.precalc_ = True
             else:
                 # As a side effect this actually modifies self.query.result.
