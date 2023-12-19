@@ -208,16 +208,7 @@ class ResponseConfig(object):
     """A container of configuration parameters used when constructing responses.
     
     The following parameters are expected, set from corresponding configuration
-    values:
-
-    * max_udp_payload
-    * max_tcp_payload
-    * max_value_payload
-    * return_partial_tcp
-    * return_partial_value
-    * max_ttl
-    * default_ttl
-    * min_ttl
+    values. FOR THE MOST UP TO DATE LIST, see agent.py.
     """
     def __init__(self, **kwargs):
         self.config = kwargs
@@ -255,8 +246,19 @@ class Request(object):
     REDIS = None        # For tests / debugging.
     
     STATISTICS_TYPES = ('udp_drop', 'udp', 'tcp')
-    REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value', 'all_queries_as_txt', 'case_folding', 'enable_error_txt')
+
+    #
+    # Anything which is string is handled here, with special handling for the strings
+    # "True", "False", "None".
+    REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value',
+                             'all_queries_as_txt', 'case_folding', 'enable_error_txt',
+                             'incrementing'
+                            )
     REDIS_FIXUP_VALUES = { 'False':False, 'True':True, 'None':None }
+    #
+    # Anything not enumerated above is expected to be integer-valued (or capable of being
+    # converted to an integer value.
+    #
     
     RDATA_HEADER_LENGTH = 13
     
@@ -1302,6 +1304,7 @@ class RedisIO(object):
                                         socket_connect_timeout=self.CONNECT_TIMEOUT
                                        )
         self.finishers = set()
+        self.test_shims = {}
         return
     
     def redis_job(self, query, callback):
@@ -1319,8 +1322,20 @@ class RedisIO(object):
             
         try:
             exc = result = None
-            result = query.query(self.redis)
-            query.resolve_ttl(self.redis)
+            #
+            # NOTE: If a key value is specified as the value of the "incrementing" override
+            #       in a test, that value can be incremented and returned here as the (apparent)
+            #       result of a GET operation but it's never actually read / written to Redis.
+            if (  'incrementing' in self.test_shims
+              and isinstance(query, RedisGetQuery)
+              and query.key == self.test_shims['incrementing']['k']
+               ):
+                self.test_shims['incrementing']['v'] += 1
+                result = self.test_shims['incrementing']['v']
+                query.ttl = None
+            else:
+                result = query.query(self.redis)
+                query.resolve_ttl(self.redis)
         except redis.exceptions.ConnectionError as e:
             logging.error('redis.exceptions.ConnectionError: {}'.format(e))
             exc = e
@@ -1357,15 +1372,15 @@ class RedisIO(object):
             PRINT_COROUTINE_ENTRY_EXIT('< finish_job')
         return
     
-    async def submit(self, query, callback):
+    async def submit(self, query, callback, request_id):
         if PRINT_COROUTINE_ENTRY_EXIT:
-            PRINT_COROUTINE_ENTRY_EXIT('> submit ({})'.format(query.id))
+            PRINT_COROUTINE_ENTRY_EXIT('> submit ({})'.format(request_id))
 
         await self.semaphore.acquire()
         self.event_loop.run_in_executor(self.pool, self.redis_job, query, callback)
 
         if PRINT_COROUTINE_ENTRY_EXIT:
-            PRINT_COROUTINE_ENTRY_EXIT('< submit ({})'.format(query.id))
+            PRINT_COROUTINE_ENTRY_EXIT('< submit ({})'.format(request_id))
         return
     
     

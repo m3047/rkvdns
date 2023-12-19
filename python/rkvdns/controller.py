@@ -149,19 +149,24 @@ class Debouncer(object):
             return submit_query( query,
                         self.complete_pending_requests(
                             reply_callback, tied_requests, query, self.redis_stats and self.redis_stats.start_timer() or None
-                    )   )
+                        ),
+                        req.request.id
+                    )
         
         # Query is pending.
         if request_list.answer is None:
-            ignore = self.buckets[0].add_request(k, req)
-            return None
+            for bucket in self.buckets:
+                if k in bucket:
+                    ignore = bucket.add_request(k, req)
+                    return None
+            raise KeyError( '{} not found in buckets.'.format(k) )
         
         # Query is ready.
         return reply_callback( req, request_list.query, request_list )
 
     async def complete_pending_requests( self, reply_callback, tied_requests, query, redis_timer):
         """Complete any pending requests."""
-        
+
         for req in tied_requests.requests:
             await reply_callback(req, query, tied_requests)
 
@@ -188,7 +193,7 @@ class Controller(object):
             rdtype.A, rdtype.AAAA, rdtype.TXT
         }
     
-    def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics):
+    def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics, control_key):
         self.pending_queue = pending_queue
         self.response_queue = response_queue
         self.redis_io = redis_io
@@ -202,6 +207,9 @@ class Controller(object):
             self.pre_redis_stats = None
             self.redis_stats = None
             self.write_queue_stats = None
+        # Passed so that the pending queue processor can be smart about whether to
+        # interrogate requests for testing shims to be passed on to e.g. the RedisIO processor.
+        self.control_key = control_key
         
         self.queue_processor = event_loop.create_task(self.process_pending_queue())
 
@@ -252,7 +260,33 @@ class Controller(object):
         debouncer = Debouncer( self.redis_stats )
         while True:
             req = await self.pending_queue.get()
-                        
+            
+            #
+            # +++ Test shimming.
+            #
+            # This is automated, see end_to_end.WithRedis.set_config() and io.Request.patch_for_test()
+            if self.control_key:
+
+                if req.response_config.incrementing:
+                    incrementing_encoded = req.response_config.incrementing.encode()
+                    if (  'incrementing' in self.redis_io.test_shims
+                      and self.redis_io.test_shims['incrementing']['k'] != incrementing_encoded
+                       ):
+                        del self.redis_io.test_shims['incrementing']
+                    if 'incrementing' not in self.redis_io.test_shims:
+                        self.redis_io.test_shims['incrementing'] = {
+                                'k': incrementing_encoded,
+                                'v': 0
+                            }
+                elif 'incrementing' in self.redis_io.test_shims:
+                    del self.redis_io.test_shims['incrementing']
+
+                if req.response_config.pending_delay_ms:
+                    await asyncio.sleep(req.response_config.pending_delay_ms / 1000)
+                    
+            # --- Test shimming.
+            #
+
             if PRINT_COROUTINE_ENTRY_EXIT:
                 PRINT_COROUTINE_ENTRY_EXIT('> process_pending_queue ({})'.format(req.request.id))
                     
@@ -362,8 +396,7 @@ class Controller(object):
             if PRINT_COROUTINE_ENTRY_EXIT:
                 PRINT_COROUTINE_ENTRY_EXIT('< redis_callback ({})'.format(req.request.id))
         except Exception as e:
-            logging.fatal('An exception occurred in Controller.redis_callback(). Traceback on STDOUT.')
-            traceback.print_exc()
+            logging.fatal('An exception occurred in Controller.redis_callback(). Traceback follows.')
+            logging.fatal(traceback.format_exc())
         return
-            
-        
+    

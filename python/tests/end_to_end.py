@@ -40,13 +40,27 @@ import dns.flags
 import dns.query, dns.message
 import dns.rdatatype as rdtype
 import re
+import concurrent.futures
+from random import random
+import time
+import threading
 
 if '..' not in sys.path:
     sys.path.insert(0,'..')
 
 import configuration as config
 
+class CountingDict(dict):
+    def inc(self, k):
+        if k not in self:
+            self[k] = 0
+        self[k] += 1
+        return
+
 # This is the default config which gets set in the CONTROL_KEY redis hash.
+#
+# NOTE: The implementation of io.Request.patch_for_test() doesn't handle floats gracefully.
+#       Don't try to pass floats for ints, and for that matter don't try to pass floats.
 DEFAULT_CONFIG = dict(
         max_pending = 50,
 
@@ -65,15 +79,30 @@ DEFAULT_CONFIG = dict(
     )
 
 class WithRedis(unittest.TestCase):
+    REDIS = True
+    RESOLVER = True
+    THREADING = False
+    
     def setUp(self):
-        self.redis = redis.client.Redis( config.REDIS_SERVER, decode_responses=True,
-                                         socket_connect_timeout=5
-                                       )
+        if self.REDIS:
+            self.redis = redis.client.Redis( config.REDIS_SERVER, decode_responses=True,
+                                            socket_connect_timeout=5
+                                        )
+
         self.zone = config.ZONE.rstrip() + '.'
-        resolver = self.resolver = Resolver(configure=False)
+        if self.RESOLVER:
+            self.resolver = self.setUpResolver()
+            
+        if self.THREADING:
+            self.locks = dict( query=threading.Lock(), resp=threading.Lock() )
+
+        return
+    
+    def setUpResolver(self):
+        resolver = Resolver(configure=False)
         resolver.domain = self.zone
         resolver.nameservers = [config.INTERFACE]
-        return
+        return resolver
     
     def set_config(self, **kwargs):
         temp_config = DEFAULT_CONFIG.copy()
@@ -88,10 +117,11 @@ class WithRedis(unittest.TestCase):
         NOTE: We do our best to delete all upper cased and lower cased variants
               as well!
         """
-        for key in (config.CONTROL_KEY, config.CONTROL_KEY.lower(), config.CONTROL_KEY.upper()):
-            keys = self.redis.keys(key + '*')
-            if keys:
-                self.redis.delete(*keys)
+        if self.REDIS:
+            for key in (config.CONTROL_KEY, config.CONTROL_KEY.lower(), config.CONTROL_KEY.upper()):
+                keys = self.redis.keys(key + '*')
+                if keys:
+                    self.redis.delete(*keys)
         return
 
 class TestOptions(WithRedis):
@@ -440,6 +470,115 @@ class TestQueries(WithRedis):
         resp = self.resolver.query(key + '.scard.' + self.zone, 'A')
         self.assertTrue(isinstance(resp.response.answer[0][0], A))
         self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.4')
+        return
+
+class TestInfrastructure(WithRedis):
+    """Tests infrastructure, things which aren't knobs or dials.
+    
+    Examples would be debouncing (dropping duplicate queries) and marshalling
+    (answering several duplicate queries with the same result).
+    
+    These tests may not do what either you or I expect them to do.
+    
+    NOTE: Each one of these tests can be expected to take HOW_LONG_IS_LONG_IN_SECONDS
+          to complete.
+    """
+    HOW_LONG_IS_LONG_IN_SECONDS = 14
+    PENDING_QUEUE_DELAY = 1.5
+    NUMBER_OF_QUERIES = int(HOW_LONG_IS_LONG_IN_SECONDS / PENDING_QUEUE_DELAY)
+    
+    INCREMENTING = 'incrementing'
+    
+    RESOLVER = False
+    THREADING = True
+    
+    def issuingThread(self, id):
+        with self.locks['query']:
+            query = query = dns.message.make_query( id + '.get.' + self.zone, 'TXT' )
+        with self.locks['resp']:
+            resp = dns.query.udp(query, config.INTERFACE)
+        return resp
+    
+    def test_marshalling_fast_fast(self):
+        """Fast issue, fast response.
+        
+        Multiple queries in short order should not result in individual query issues to Redis.
+        
+        Expected: 1 Redis query used for all queries.
+        """
+        id = self.INCREMENTING+'{:04d}'.format( int( random() * 10000 ) )
+        self.set_config(incrementing=id)
+
+        threads = set()
+        results = CountingDict()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for n in range(self.NUMBER_OF_QUERIES):
+                threads.add( executor.submit( self.issuingThread, id ) )
+            for thread in concurrent.futures.as_completed( threads ):
+                resp = thread.result()
+                results.inc( resp.answer[0][0].to_text() )
+        self.assertEqual( len(results), 1 )
+        self.assertEqual( results.popitem()[1], self.NUMBER_OF_QUERIES )
+        return
+
+    def test_marshalling_fast_slow(self):
+        """Fast issue, slow response.
+        
+        This takes HOW_LONG_IS_LONG_IN_SECONDS to run.
+
+        Expected: 3 flights, total of 9 queries
+        """
+        id = self.INCREMENTING+'{:04d}'.format( int( random() * 10000 ) )
+        self.set_config(incrementing=id, pending_delay_ms=int(self.PENDING_QUEUE_DELAY * 1000))
+
+        threads = set()
+        results = CountingDict()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for n in range(self.NUMBER_OF_QUERIES):
+                threads.add( executor.submit( self.issuingThread, id ) )
+            for thread in concurrent.futures.as_completed( threads ):
+                resp = thread.result()
+                results.inc( resp.answer[0][0].to_text() )
+        self.assertEqual( len(results), 3 )
+        self.assertEqual( sum(results.values()), self.NUMBER_OF_QUERIES )
+        return
+
+    def test_marshalling_slow_fast(self):
+        """slow issue, fast response.
+        
+        This takes HOW_LONG_IS_LONG_IN_SECONDS to run.
+
+        Expected: 3 flights, total of 9 queries
+        """
+        id = self.INCREMENTING+'{:04d}'.format( int( random() * 10000 ) )
+        self.set_config(incrementing=id)
+
+        results = CountingDict()
+        for n in range(self.NUMBER_OF_QUERIES):
+            resp = self.issuingThread( id )
+            results.inc( resp.answer[0][0].to_text() )
+            time.sleep(self.PENDING_QUEUE_DELAY)
+        self.assertEqual( len(results), 3 )
+        self.assertEqual( sum(results.values()), self.NUMBER_OF_QUERIES )
+        return
+
+    def test_marshalling_slow_slow(self):
+        """slow issue, slow response.
+        
+        This takes 2 * HOW_LOG_IS_LONG_IN_SECONDS to run.
+        
+        Expected: more than 3 flights, total of 9 queries
+        """
+        id = self.INCREMENTING+'{:04d}'.format( int( random() * 10000 ) )
+        self.set_config(incrementing=id, pending_delay_ms=int(self.PENDING_QUEUE_DELAY * 1000))
+            
+        results = CountingDict()
+        for n in range(self.NUMBER_OF_QUERIES):
+            resp = self.issuingThread( id )
+            results.inc( resp.answer[0][0].to_text() )
+            time.sleep(self.PENDING_QUEUE_DELAY)
+        self.assertTrue( len(results) > 3 )
+        self.assertEqual( sum(results.values()), self.NUMBER_OF_QUERIES )
         return
 
 if __name__ == '__main__':

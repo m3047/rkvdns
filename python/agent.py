@@ -446,7 +446,9 @@ def main():
                         soa_contact         = SOA_CONTACT,
                         # These are for test scaffolding, but have no other impact.
                         redis_server        = redis_server,
-                        redis_timeout       = 5
+                        redis_timeout       = 5,
+                        incrementing        = None,
+                        pending_delay_ms    = None
     )
 
     pending_queue = asyncio.Queue(MAX_PENDING)
@@ -454,7 +456,7 @@ def main():
 
     dns_io = io.DnsIO( interface, event_loop, pending_queue, response_queue, response_config, statistics )
     redis_io = io.RedisIO( redis_server, event_loop, LEAK_SEMAPHORE_IF_EXCEPTION )
-    controller = Controller( pending_queue, response_queue, redis_io, event_loop, ZONE, statistics )
+    controller = Controller( pending_queue, response_queue, redis_io, event_loop, ZONE, statistics, response_config.control_key )
 
     if QUEUE_DEPTH:
         depth_routine = event_loop.create_task( queue_depth_report(pending_queue, response_queue) )
