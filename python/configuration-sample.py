@@ -46,6 +46,10 @@
 # Minimum allowable TTL
 #MIN_TTL = 5
 
+# Debouncing. If True then multiple requests from the same host are suppressed,
+# even with unique query ids.
+#DEBOUNCE = False
+
 # How often to print statistics, in seconds. The practical minimum is
 # 60 seconds.
 #STATS = 3600

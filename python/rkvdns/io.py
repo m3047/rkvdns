@@ -252,7 +252,7 @@ class Request(object):
     # "True", "False", "None".
     REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value',
                              'all_queries_as_txt', 'case_folding', 'enable_error_txt',
-                             'incrementing'
+                             'incrementing', 'debounce'
                             )
     REDIS_FIXUP_VALUES = { 'False':False, 'True':True, 'None':None }
     #

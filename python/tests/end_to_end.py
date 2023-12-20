@@ -492,11 +492,14 @@ class TestInfrastructure(WithRedis):
     RESOLVER = False
     THREADING = True
     
-    def issuingThread(self, id):
+    def issuingThread(self, id, timeout=None):
         with self.locks['query']:
             query = query = dns.message.make_query( id + '.get.' + self.zone, 'TXT' )
         with self.locks['resp']:
-            resp = dns.query.udp(query, config.INTERFACE)
+            try:
+                resp = dns.query.udp(query, config.INTERFACE, timeout=timeout)
+            except:
+                resp = None
         return resp
     
     def test_marshalling_fast_fast(self):
@@ -520,6 +523,29 @@ class TestInfrastructure(WithRedis):
         self.assertEqual( len(results), 1 )
         self.assertEqual( results.popitem()[1], self.NUMBER_OF_QUERIES )
         return
+    
+    def test_debouncing(self):
+        """Modified version of test_marshalling_fast_fast.
+        
+        Multiple queries in short order should not result in individual responses to querants.
+        
+        Expected: 1 query responded to.
+        """
+        id = self.INCREMENTING+'{:04d}'.format( int( random() * 10000 ) )
+        self.set_config(incrementing=id, debounce='True')
+
+        threads = set()
+        results = CountingDict()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for n in range(self.NUMBER_OF_QUERIES):
+                threads.add( executor.submit( self.issuingThread, id, 0.1 ) )
+            for thread in concurrent.futures.as_completed( threads ):
+                resp = thread.result()
+                if resp is not None:
+                    results.inc( resp.answer[0][0].to_text() )
+        self.assertEqual( len(results), 1 )
+        self.assertEqual( results.popitem()[1], 1 )
+        return    
 
     def test_marshalling_fast_slow(self):
         """Fast issue, slow response.

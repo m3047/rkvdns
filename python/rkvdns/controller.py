@@ -92,7 +92,9 @@ class DictOfRequests(dict):
     @staticmethod
     def request_key(req, query):
         """Returns the dictionary key for the specified request."""
-        return tuple( query.parameter_list + [ req.qtype, isinstance(req.plug, io.TcpPlug) and RequestList.TCP or RequestList.UDP ] )
+        marshalling = query.parameter_list + [ req.qtype, isinstance(req.plug, io.TcpPlug) and RequestList.TCP or RequestList.UDP ]
+        debouncing = marshalling + [ req.plug.query_address ]
+        return tuple( marshalling ), tuple( debouncing )
         
     def add_request(self, k, req, query=None):
         """Add a request to the appropriate list of requests.
@@ -111,11 +113,13 @@ class DictOfRequests(dict):
 
 class Debouncer(object):
     """Time-bounded duplicate detector."""
-    def __init__(self, redis_stats, seconds=DEBOUNCING_WINDOW):
+    def __init__(self, redis_stats, seconds=DEBOUNCING_WINDOW, debounce=False):
         """Default is to debounce for 5 seconds."""
         self.redis_stats = redis_stats
         self.seconds = seconds
-        self.buckets = []
+        self.buckets = [ DictOfRequests() ]
+        self.debouncers = [ set() ]
+        self.debounce = debounce
         self.last = int(time())
         return
     
@@ -125,6 +129,12 @@ class Debouncer(object):
                 return b[k]
         return None
     
+    def find_debounce(self, k):
+        for d in self.debouncers:
+            if k in d:
+                return True
+        return None
+
     def reply(self, req, query, submit_query, reply_callback):
         """Prepare a reply.
         
@@ -136,10 +146,21 @@ class Debouncer(object):
         if now > self.last:
             while now > self.last:
                 self.buckets.insert( 0, DictOfRequests() )
+                if self.debounce:
+                    self.debouncers.insert( 0, set() )
                 self.last += 1
             del self.buckets[self.seconds:]
+            if self.debounce:
+                del self.debouncers[self.seconds:]
 
-        k = DictOfRequests.request_key( req, query )
+        k, d = DictOfRequests.request_key( req, query )
+        
+        if self.debounce:
+            if self.find_debounce( d ):
+                # Drop it on the floor.
+                return None
+            self.debouncers[0].add( d )
+        
         request_list = self.find_query(k)
 
         # Query has not been seen.
@@ -193,7 +214,7 @@ class Controller(object):
             rdtype.A, rdtype.AAAA, rdtype.TXT
         }
     
-    def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics, control_key):
+    def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics, control_key, debounce):
         self.pending_queue = pending_queue
         self.response_queue = response_queue
         self.redis_io = redis_io
@@ -211,7 +232,7 @@ class Controller(object):
         # interrogate requests for testing shims to be passed on to e.g. the RedisIO processor.
         self.control_key = control_key
         
-        self.queue_processor = event_loop.create_task(self.process_pending_queue())
+        self.queue_processor = event_loop.create_task(self.process_pending_queue( debounce ))
 
         return
 
@@ -254,10 +275,11 @@ class Controller(object):
         req.noerror()
         return req
 
-    async def process_pending_queue(self):
+    async def process_pending_queue(self, debounce):
         """If everything looks good, calls io.RedisIO.submit()"""
         zoff = len(self.zone) * -1
-        debouncer = Debouncer( self.redis_stats )
+        # The Debouncer performs both marshalling and debouncing.
+        debouncer = Debouncer( self.redis_stats, debounce=debounce )
         while True:
             req = await self.pending_queue.get()
             
@@ -284,6 +306,7 @@ class Controller(object):
                 if req.response_config.pending_delay_ms:
                     await asyncio.sleep(req.response_config.pending_delay_ms / 1000)
                     
+                debouncer.debounce = req.response_config.debounce
             # --- Test shimming.
             #
 

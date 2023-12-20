@@ -246,6 +246,28 @@ CASE_FOLDING allows you to control what happens. There are four options:
   lower         Forces them to lowercase.
   escape        The first three octets of the key or pattern define escapes
                 which apply to the following octet when they occur.
+
+Debouncing and Marshalling
+--------------------------
+
+Mitigations are in place for bad behavior by DNS clients combined with slow Redis
+queries. The precipitating issue in general is slow Redis queries.
+
+Because of so-called "happy eyeballs" recursing resolvers may display a tendency
+of rapidly repeating the same query while awaiting an answer. (Some may mint new
+query ids when doing this, but I digress.) Setting DEBOUNCE=True in the configuration
+will suppress multiple identical queries from the same source address ignoring
+query ids.
+
+The other bad behavior is what is commonly called the "thundering herd". It is quite
+possible that although stuff tends not to get queried ("write caching" is discussed
+elsewhere) when stuff does get queried it may get queried a lot. A caching resolver
+is intended to mitigate this by serving repeated queries from its cache. But what can
+also happen is applications query multiple caching resolvers looking for the answer,
+and all of those queries end up at RKVDNS looking for the authoritative source.
+Marshalling is the process of matching DNS queries to Redis queries, and answering
+multiple DNS queries from the same Redis query when possible. Marshalling is always
+enabled.
 """
 
 import sysconfig
@@ -310,6 +332,9 @@ SOA_CONTACT = None
 
 # This is the Redis key which we use for orchestrating tests.
 CONTROL_KEY = None
+
+# Turns on host-based debouncing if True.
+DEBOUNCE = False
 
 if __name__ == "__main__":
     from configuration import *
@@ -444,6 +469,7 @@ def main():
                         zone                = ZONE,
                         rkvdns_fqdn         = RKVDNS_FQDN,
                         soa_contact         = SOA_CONTACT,
+                        debounce            = DEBOUNCE,
                         # These are for test scaffolding, but have no other impact.
                         redis_server        = redis_server,
                         redis_timeout       = 5,
@@ -456,7 +482,8 @@ def main():
 
     dns_io = io.DnsIO( interface, event_loop, pending_queue, response_queue, response_config, statistics )
     redis_io = io.RedisIO( redis_server, event_loop, LEAK_SEMAPHORE_IF_EXCEPTION )
-    controller = Controller( pending_queue, response_queue, redis_io, event_loop, ZONE, statistics, response_config.control_key )
+    controller = Controller( pending_queue, response_queue, redis_io, event_loop, ZONE, statistics,
+                             response_config.control_key, response_config.debounce )
 
     if QUEUE_DEPTH:
         depth_routine = event_loop.create_task( queue_depth_report(pending_queue, response_queue) )
