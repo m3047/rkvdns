@@ -247,9 +247,32 @@ resolver to conclude "this does not exist" for a short duration of time.
 
 In-band signaling to the client is problematic in the DNS, see _Errors as TXT_ above.
 
-## Debouncing
+## Marshalling and Debouncing
 
-The server performs debouncing of requests. Only the first UDP request for a `( <peer-address>, <qname>, <qtype> )` tuple received in
+In the specific case of _RKVDNS_ deployments, a nameserver such as _BIND_ SHOULD be deployed in front of it as discussed
+elsewhere in this document. Clients using _The DNS_ SHOULD be directed to such a server rather than accessing the
+RKVDNS service directly.
+
+Points in this section discuss mitigations due to poorly-behaved resolvers and poor systems-level thinking in the DNS community.
+The behaviors at issue include:
+
+* (Excessively) aggressive query retry over UDP.
+* Retries which mint new query ids instead of re-using.
+* A tendency to succumb to the "thundering herd".
+* Privacy-motivated changes which result in an increased number of queries.
+
+### Marshalling
+
+The server performs _marshalling_: if multiple queries which come in which will result in the same _Redis_ query within a five
+second window, the queries are collected in a tranche or flight and responded to collectively from a single _Redis_ query.
+
+Separate flights are maintained for TCP versus UDP. For UDP, truncation may differ between observed responses and may not be optimal
+in all cases if the advertised EDNS payload size varies between queries in the flight. In all such cases `TC=1` will be returned.
+
+### Debouncing
+
+If `DEBOUNCING = True` is specified in the configuration, the server performs debouncing of requests. Only the first UDP request
+for a `( <peer-address>, <qname>, <qtype> )` tuple received in
 a five second window is processed, subsequent requests for the same tuple in the window are dropped.
 
 People may say this is "technically" incorrect: multiple clients on the peer host might coincidentally make the same request at
@@ -259,9 +282,23 @@ time to analyze the specific operating environment technically.
 Technically, all clients on a host should be using the system resolver; hopefully it caches (see `nscd` although I have mixed feelings
 about it).
 
-In the specific case of _RKVDNS_ deployments, a nameserver such as _BIND_ SHOULD be deployed in front of it as discussed
-elsewhere in this document. Clients using _The DNS_ SHOULD be directed to such a server rather than accessing the
-RKVDNS service directly.
+### Disabling `qname-minimization`
+
+Under the shibboleth of "privacy", some recursive resolvers opt to issue more less concise queries (instead of asking the intended
+question of all authoritative servers consulted, they choose to ask vague questions which they conclude that particular server
+should be able to answer). The problems with this approach revolve around DNS nodes called _empty non-terminals_.
+
+_Empty non-terminals_ don't have records associated with them, but they have children; they DO NOT return `NXDOMAIN` because
+they have children; or at least, they're not supposed to return `NXDOMAIN` although for other security reasons they often do.
+"How can there be competing standards?" is a reasonable question, but bear in mind that a "Request For Comments" (RFC) is NOT
+a standard; most of the internet is built on RFCs, and there are some things which are standards... in fact _Best Current Practice_
+(BCP), which are routinely ignored. The Internet community is having a knife fight as it is wont to do from time to time.
+
+_Empty non-terminals_ are relatively rare in the paths where resolving internet addresses (`A` and `AAAA` queries) are prevalent,
+however they're common in more generic applications which rely on `TXT`, `SRV`, `PTR` and similar records. For instance,
+`get.redis.example.com` (as opposed to `foo.get.redis.example.com`) would properly speaking be an _empty non-terminal_.
+
+We recommend you disable `qname-minimization` (that's the _BIND_ configuration option) for data applications.
 
 -------------------
 
