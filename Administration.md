@@ -300,6 +300,14 @@ however they're common in more generic applications which rely on `TXT`, `SRV`, 
 
 We recommend you disable `qname-minimization` (that's the _BIND_ configuration option) for data applications.
 
+#### Don't name a key "_"
+
+___Qname minimization___ **relies on the assumption that there will be no labels consisting of a single "`_`" character.**
+
+Probes issued as part of _qname minimization_ are typically of the form `_.subzone.zone`: quite literally, a label of "_" is prepended and
+a generic type `A` query is issued, attempting to elicit an `NXDOMAIN` response containing the zone's `SOA` record in the AUTHORITY section
+of the response.
+
 -------------------
 
 For paid support: fwm.rkvdns.support.f2u@m3047.net
