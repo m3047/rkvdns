@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2023 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2024 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -214,12 +214,13 @@ class Controller(object):
             rdtype.A, rdtype.AAAA, rdtype.TXT
         }
     
-    def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics, control_key, debounce):
+    def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics, control_key, debounce, conformance_level):
         self.pending_queue = pending_queue
         self.response_queue = response_queue
         self.redis_io = redis_io
         self.event_loop = event_loop
         self.zone = zone
+        self.conformance_level = conformance_level
         if statistics is not None:
             self.pre_redis_stats = statistics.Collector('pre_redis')
             self.redis_stats = statistics.Collector('redis')
@@ -235,33 +236,71 @@ class Controller(object):
         self.queue_processor = event_loop.create_task(self.process_pending_queue( debounce ))
 
         return
+    
+    ###############################################################################
+    # RESPONSE HANDLERS
+    ###############################################################################
+    #
+    # These are declared in the order invoked in the asyncs below. They all perform
+    # logging and conformance determined response and call the Request's methods
+    # to build the proper response.
+    #
 
+    def invalid_domain(self, req):
+        """The domain in the query is not our delegated domain.
+        
+        The delegated domain is given by the configuration parameter ZONE.
+        """
+        logging.warning('NXDOMAIN: Not our ZONE: {} from: {}'.format(
+                req.request.question[0].name.to_text(), req.plug.query_address
+            ))
+        if self.conformance_level:
+            req.empty_non_terminal(referral=False)
+        else:
+            req.nxdomain('Not our ZONE.', referral=True)
+        return req
+
+    def no_operation(self, req):
+        """No Redis operator was specified.
+        
+        A qname of ZONE was specified, but the qtype is not supported. Presumably
+        it's one of the qtypes (A, AAAA, TXT) for a valid query but we don't check
+        all that closely. We explicitly support SOA and NS at this level.
+        """
+        if self.conformance_level:
+            rcode = 'NoAnswer'
+            req.empty_non_terminal()
+        else:
+            rcode = 'FORMERR'
+            req.formerr('Operation not specified.')
+        logging.warning('{}: Operation not specified in: {} from: {}'.format(
+                rcode, req.request.question[0].name.to_text(), req.plug.query_address
+            ))
+        return req
+    
     def qtype_not_allowed(self, req):
-        logging.error('FORMERR: Disallowed qtype: {} in: {} from: {}'.format(
+        logging.error('NOTIMP: Disallowed qtype: {} in: {} from: {}'.format(
                 rdtype.to_text(req.qtype), req.request.question[0].name.to_text(), req.plug.query_address
             ))
-        req.formerr('Disallowed qtype: {}'.format(rdtype.to_text(req.qtype)))
+        req.notimp('Disallowed qtype: {}'.format(rdtype.to_text(req.qtype)))
         return req
-    
-    def nxdomain(self, req):
-        logging.warning('NXDOMAIN: Key or zone not found in: {} from: {}'.format(
-                req.request.question[0].name.to_text(), req.plug.query_address
-            ))
-        req.nxdomain('Key or zone not found.')
-        return req
-    
-    def no_operation(self, req):
-        logging.warning('FORMERR: Operation not specified in: {} from: {}'.format(
-                req.request.question[0].name.to_text(), req.plug.query_address
-            ))
-        req.formerr('Operation not specified.')
-        return req
-    
+        
     def parameter_error(self, req, e):
-        logging.error('FORMERR: {} in: {} from: {}'.format(
-                repr(e), req.request.question[0].name.to_text(), req.plug.query_address
+        if self.conformance_level:
+            if isinstance( e, io.RedisParameterError ):
+                # We'll call these soft errors, they might be recoverable.
+                rcode = 'NoAnswer'
+                req.empty_non_terminal()
+            else:
+                # Operand errors and invalid parameter values can never succeed.
+                rcode = 'NXDOMAIN'
+                req.nxdomain()
+        else:
+            rcode = 'FORMERR'
+            req.formerr('Parameter error: {}'.format(repr(e)))
+        logging.error('{}: {} in: {} from: {}'.format(
+                rcode, repr(e), req.request.question[0].name.to_text(), req.plug.query_address
             ))
-        req.formerr('Parameter error: {}'.format(repr(e)))
         return req
 
     def query_failure(self, req, e):
@@ -271,9 +310,20 @@ class Controller(object):
         req.servfail('Query failure: {}'.format(repr(e)))
         return req
     
+    def nxdomain(self, req):
+        logging.warning('NXDOMAIN: Key or zone not found in: {} from: {}'.format(
+                req.request.question[0].name.to_text(), req.plug.query_address
+            ))
+        req.nxdomain('Key or zone not found.')
+        return req
+    
     def query_success(self, req):
         req.noerror()
         return req
+
+    ###############################################################################
+    # ASYNC PROCESSING ROUTINES
+    ###############################################################################
 
     async def process_pending_queue(self, debounce):
         """If everything looks good, calls io.RedisIO.submit()"""
@@ -323,7 +373,7 @@ class Controller(object):
             # Correct zone?
             # NOTE: This is the point at which the Request.request promise is finalized.
             if self.zone[zoff:] != [ label.lower() for label in req.qlabels[zoff:] ]:
-                await self.response_queue.write( self.nxdomain(req) )
+                await self.response_queue.write( self.invalid_domain(req) )
                 if timer is not None:
                     timer.stop()
                 continue

@@ -384,8 +384,33 @@ class Request(object):
         
         return
     
-    def error_response(self, code, text):
+    def soa_record(self, rrset):
+        config = self.response_config
+        if not (config.rkvdns_fqdn and config.soa_contact):
+            logging.warning('SOA not available for referral, configure RKVDNS_FQDN and SOA_CONTACT.')
+            return
+
+        target_rrset = response.find_rrset(
+                                    rrset, self.request.question[0].name,
+                                    rdcls.IN, rdtype.SOA, create=True
+                                )
+        target_rrset.ttl = config.default_ttl
+        
+        target_rrset.add(
+                rdata.from_text(rdcls.IN, rdtype.SOA,
+                                '{}. {}. 1 {} {} 86400 {}'.format(
+                                    '.'.join(config.rkvdns_fqdn),
+                                    '.'.join(config.soa_contact),
+                                    config.default_ttl, config.default_ttl, config.min_ttl
+                            )
+                    )
+            )
+        return
+    
+    def error_response(self, code, text, referral):
         response = self.response = dns.message.make_response(self.request)
+        if referral:
+            self.soa_record( response.additional )
         if self.response_config.enable_error_txt and text is not None:
             response.set_rcode(rcode.NOERROR)
             self.cname_error( text )
@@ -396,17 +421,47 @@ class Request(object):
 
     def formerr(self, text=None):
         """FORMERR -- FLUENT"""
-        self.error_response(rcode.FORMERR, text)
+        self.error_response(rcode.FORMERR, text, False)
+        return self
+
+    def notimp(self, text=None):
+        """NOTIMP -- FLUENT"""
+        self.error_response(rcode.NOTIMP, text, False)
         return self
         
-    def nxdomain(self, text=None):
-        """NXDOMAIN -- FLUENT"""
-        self.error_response(rcode.NXDOMAIN, text)
+    def nxdomain(self, text=None, referral=True):
+        """NXDOMAIN -- FLUENT
+        
+        Parameters:
+            text        Optional text for CNAME error messaging.
+            referral    If True, the SOA is included in the ADDITIONAL section.
+        """
+        self.error_response(rcode.NXDOMAIN, text, referral)
+        return self
+    
+    def empty_non_terminal(self, referral=True):
+        """Empty Non-Terminal -- FLUENT"""
+        config = self.response_config
+        if not (config.rkvdns_fqdn and config.soa_contact):
+            return self.servfail('SOA not available')
+        
+        response = self.response = dns.message.make_response(self.request)
+        response.set_rcode(rcode.NOERROR)
+
+        all_ones = 2**16 - 1
+        response.flags &= all_ones ^ (dns.flags.RD | dns.flags.RA)
+        response.flags |= (dns.flags.QR | dns.flags.AA)
+        
+        if referral:
+            self.soa_record( response.additional )
+            
+        self.edns_fixup()
+
         return self
     
     def servfail(self, text=None):
         """SERVFAIL -- FLUENT"""
-        self.error_response(rcode.SERVFAIL, text)
+        self.error_response(rcode.SERVFAIL, text, False)
         return self
     
     def soa(self):
@@ -420,23 +475,8 @@ class Request(object):
         all_ones = 2**16 - 1
         response.flags &= all_ones ^ (dns.flags.RD | dns.flags.RA)
         response.flags |= (dns.flags.QR | dns.flags.AA)
-
-        answer_rrset = response.find_rrset(
-                                    response.answer, self.request.question[0].name,
-                                    rdcls.IN, rdtype.SOA, create=True
-                                )
-        answer_rrset.ttl = config.default_ttl
         
-        answer_rrset.add(
-                rdata.from_text(rdcls.IN, rdtype.SOA,
-                                '{}. {}. 1 {} {} 86400 {}'.format(
-                                    '.'.join(config.rkvdns_fqdn),
-                                    '.'.join(config.soa_contact),
-                                    config.default_ttl, config.default_ttl, config.min_ttl
-                            )
-                    )
-            )
-
+        self.soa_record( response.answer )
         self.edns_fixup()
 
         return self

@@ -16,7 +16,7 @@
 PRINT_COROUTINE_ENTRY_EXIT = None
 
 from .dns import DnsResponseQueue, DnsIO, TcpPlug, UdpPlug, Request
-from .redis import RedisIO, RedisQuery, RedisError
+from .redis import RedisIO, RedisQuery, RedisError, RedisParameterError
 
 #################################################################################
 # CONFIGS USED TO CONSTRUCT RESPONSES

@@ -113,6 +113,12 @@
 # SOA_CONTACT = None
 # SOA_CONTACT = 'dns-admin.example.com'
 
+# Controls the level of conformance. If True then error reporting via responses is
+# sacrificed in favor of maximal generic reporting conformant with what modern recursing
+# nameservers expect on behalf of their cloud overlords. Mostly affects the qname minimization
+# dance.
+# CONFORMANCE = False
+
 # Define in order to run tests. It should be considered a key
 # prefix. The key itself will point to a redis hash. Additional
 # keys will be created using this as a prefix.

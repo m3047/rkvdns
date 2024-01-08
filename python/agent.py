@@ -154,7 +154,14 @@ SMEMBERS -- Members of a Set
 Record Not Found Semantics
 --------------------------
 
-In all cases the semantics are {<parameter>.}<key>.<operation>.<zone>.
+These semantics are affected by the setting of CONFORMANCE. If True, then the
+return is always either NoAnswer if the sequence of labels could plausibly be part
+of a valid query, or NXDOMAIN if not. The exception to this is key not found, where
+a valid query is demonstrably conveyed yet fails to return a result; this always
+returns NXDOMAIN.
+
+If CONFORMANCE is False, the following applies. In all cases the semantics are
+{<parameter>.}<key>.<operation>.<zone>.
 
 Operation Not Found:
 
@@ -336,6 +343,9 @@ CONTROL_KEY = None
 # Turns on host-based debouncing if True.
 DEBOUNCE = False
 
+# Maximal conformance at the expense of error reporting if True
+CONFORMANCE = False
+
 if __name__ == "__main__":
     from configuration import *
 else:
@@ -470,6 +480,7 @@ def main():
                         rkvdns_fqdn         = RKVDNS_FQDN,
                         soa_contact         = SOA_CONTACT,
                         debounce            = DEBOUNCE,
+                        conformance         = CONFORMANCE,
                         # These are for test scaffolding, but have no other impact.
                         redis_server        = redis_server,
                         redis_timeout       = 5,
@@ -483,7 +494,7 @@ def main():
     dns_io = io.DnsIO( interface, event_loop, pending_queue, response_queue, response_config, statistics )
     redis_io = io.RedisIO( redis_server, event_loop, LEAK_SEMAPHORE_IF_EXCEPTION )
     controller = Controller( pending_queue, response_queue, redis_io, event_loop, ZONE, statistics,
-                             response_config.control_key, response_config.debounce )
+                             response_config.control_key, response_config.debounce, response_config.conformance )
 
     if QUEUE_DEPTH:
         depth_routine = event_loop.create_task( queue_depth_report(pending_queue, response_queue) )
