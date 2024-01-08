@@ -386,6 +386,7 @@ class Request(object):
     
     def soa_record(self, rrset):
         config = self.response_config
+        response = self.response
         if not (config.rkvdns_fqdn and config.soa_contact):
             logging.warning('SOA not available for referral, configure RKVDNS_FQDN and SOA_CONTACT.')
             return
