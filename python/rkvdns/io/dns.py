@@ -411,7 +411,7 @@ class Request(object):
     def error_response(self, code, text, referral):
         response = self.response = dns.message.make_response(self.request)
         if referral:
-            self.soa_record( response.additional )
+            self.soa_record( response.authority )
         if self.response_config.enable_error_txt and text is not None:
             response.set_rcode(rcode.NOERROR)
             self.cname_error( text )
@@ -454,7 +454,7 @@ class Request(object):
         response.flags |= (dns.flags.QR | dns.flags.AA)
         
         if referral:
-            self.soa_record( response.additional )
+            self.soa_record( response.authority )
             
         self.edns_fixup()
 
