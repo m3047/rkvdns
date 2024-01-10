@@ -392,7 +392,7 @@ class Request(object):
             return
 
         target_rrset = response.find_rrset(
-                                    rrset, config.zone,
+                                    rrset, dns.name.from_text(config.zone),
                                     rdcls.IN, rdtype.SOA, create=True
                                 )
         target_rrset.ttl = config.default_ttl
