@@ -279,10 +279,17 @@ class Controller(object):
         return req
     
     def qtype_not_allowed(self, req):
-        logging.error('NOTIMP: Disallowed qtype: {} in: {} from: {}'.format(
-                rdtype.to_text(req.qtype), req.request.question[0].name.to_text(), req.plug.query_address
+        if self.conformance_level:
+            rcode = 'NoAnswer'
+            req.empty_non_terminal()
+            # Since strict qname minimization makes this a chronic codepath, logging is localized
+            # to the case where the conformance level is not strict.
+        else:
+            rcode = 'NOTIMP'
+            req.notimp('Disallowed qtype: {}'.format(rdtype.to_text(req.qtype)))
+            logging.warning('{}: Disallowed qtype: {} in: {} from: {}'.format(
+                    rcode, rdtype.to_text(req.qtype), req.request.question[0].name.to_text(), req.plug.query_address
             ))
-        req.notimp('Disallowed qtype: {}'.format(rdtype.to_text(req.qtype)))
         return req
         
     def parameter_error(self, req, e):
