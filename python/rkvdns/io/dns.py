@@ -210,7 +210,7 @@ class Request(object):
     # "True", "False", "None".
     REDIS_FIXUP_TEST_KEYS = ('return_partial_tcp', 'return_partial_value',
                              'all_queries_as_txt', 'case_folding', 'enable_error_txt',
-                             'incrementing', 'debounce'
+                             'incrementing', 'debounce', 'conformance'
                             )
     REDIS_FIXUP_VALUES = { 'False':False, 'True':True, 'None':None }
     #
@@ -291,7 +291,10 @@ class Request(object):
                     deletions.add('case_folding')
                     self.response_config.config['folder'] = FOLDERS[patches[k]]
             else:
-                patches[k] = int(patches[k])
+                try:
+                    patches[k] = int(patches[k])
+                except:
+                    patches[k] = eval(patches[k])
         for k in deletions:
             del patches[k]
         self.response_config.config.update(patches)
@@ -396,7 +399,6 @@ class Request(object):
                                     rdcls.IN, rdtype.SOA, create=True
                                 )
         target_rrset.ttl = config.default_ttl
-        
         target_rrset.add(
                 rdata.from_text(rdcls.IN, rdtype.SOA,
                                 '{}. {}. 1 {} {} 86400 {}'.format(
