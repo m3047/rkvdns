@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022 Fred Morris Tacoma WA USA
+# Copyright (c) 2022-2024 Fred Morris Tacoma WA USA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -75,7 +75,10 @@ DEFAULT_CONFIG = dict(
 
         max_ttl = 3600,
         default_ttl = 30,
-        min_ttl = 5        
+        min_ttl = 5,
+        conformance = 'False',
+        rkvdns_fqdn = ['dev','null'],
+        soa_contact = ['dev','null']
     )
 
 class WithRedis(unittest.TestCase):
@@ -591,7 +594,7 @@ class TestInfrastructure(WithRedis):
     def test_marshalling_slow_slow(self):
         """slow issue, slow response.
         
-        This takes 2 * HOW_LOG_IS_LONG_IN_SECONDS to run.
+        This takes 2 * HOW_LONG_IS_LONG_IN_SECONDS to run.
         
         Expected: more than 3 flights, total of 9 queries
         """
@@ -605,6 +608,118 @@ class TestInfrastructure(WithRedis):
             time.sleep(self.PENDING_QUEUE_DELAY)
         self.assertTrue( len(results) > 3 )
         self.assertEqual( sum(results.values()), self.NUMBER_OF_QUERIES )
+        return
+    
+class TestProtocol( WithRedis ):
+    """Tests Application-Level Protocol Issues.
+    
+    This is motivated by a desire to maintain compatibility with qname minimization.
+    """
+
+    # We won't use the high-level resolver here because we want to examine e.g. rcodes.
+    RESOLVER = False
+    
+    def test_ent_false_a(self):
+        """Empty NonTerminal, not in Conformance. Probe with A"""
+        self.set_config(conformance='False')
+        query = dns.message.make_query( 'get.' + self.zone, 'A',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.FORMERR)
+        return
+
+    def test_ent_false_ns(self):
+        """Empty NonTerminal, not in Conformance. Probe with NS"""
+        self.set_config(conformance='False')
+        query = dns.message.make_query( 'get.' + self.zone, 'NS',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.NOTIMP)
+        return
+
+    def test_ent_true_a(self):
+        """Empty NonTerminal, strict Conformance. Probe with A"""
+        self.set_config(conformance='True')
+        query = dns.message.make_query( 'get.' + self.zone, 'A',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.NOERROR)
+        self.assertEqual( len(resp.authority), 1 )
+        return
+
+    def test_ent_true_ns(self):
+        """Empty NonTerminal, strict Conformance. Probe with NS"""
+        self.set_config(conformance='True')
+        query = dns.message.make_query( 'get.' + self.zone, 'NS',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.NOERROR)
+        self.assertEqual( len(resp.authority), 1 )
+        return
+
+    def test_nx_false_a(self):
+        """NXDOMAIN, not in Conformance. Probe with A"""
+        self.set_config(conformance='False')
+        query = dns.message.make_query( '_.' + self.zone, 'A',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.FORMERR)
+        return
+
+    def test_nx_false_ns(self):
+        """NXDOMAIN, not in Conformance. Probe with NS"""
+        self.set_config(conformance='False')
+        query = dns.message.make_query( '_.' + self.zone, 'NS',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.NOTIMP)
+        return
+
+    def test_nx_true_a(self):
+        """NXDOMAIN, strict Conformance. Probe with A"""
+        self.set_config(conformance='True')
+        query = dns.message.make_query( '_.' + self.zone, 'A',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.NXDOMAIN)
+        self.assertEqual( len(resp.authority), 1 )
+        return
+
+    def test_nx_true_ns_1(self):
+        """NXDOMAIN, strict Conformance. Probe with NS
+        
+        This one is problematic, in this case we know it's NXDOMAIN because the operator does
+        not exist.
+        """
+        self.set_config(conformance='True')
+        query = dns.message.make_query( '_.' + self.zone, 'NS',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.NXDOMAIN)
+        return
+
+    def test_nx_true_ns_2(self):
+        """NXDOMAIN, strict Conformance. Probe with NS (part two)
+        
+        This one is problematic, it should be NXDOMAIN but we quit before performing
+        the Redis query to prove nonexistence.
+        """
+        self.set_config(conformance='True')
+        query = dns.message.make_query( '_.get.' + self.zone, 'NS',
+                                        use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                    )
+        resp = dns.query.udp(query, config.INTERFACE)
+        self.assertEqual( resp.rcode(), rcode.NOERROR)
+        self.assertEqual( len(resp.answer), 0 )
+        self.assertEqual( len(resp.authority), 1 )
         return
 
 if __name__ == '__main__':
