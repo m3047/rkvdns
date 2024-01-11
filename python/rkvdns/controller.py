@@ -278,10 +278,22 @@ class Controller(object):
             ))
         return req
     
-    def qtype_not_allowed(self, req):
+    def qtype_not_allowed(self, req, redis_labels):
+        """qtype not allowed.
+        
+        THIS CODEPATH IS PROBLEMATIC in the case of valid queries which don't exist as
+        unless the query type is one which we accept (ALLOWED_QUERY_TYPES) we never
+        perform the actual Redis query to test for existence. The best we can do is
+        treat it as an empty non-terminal.
+        """
         if self.conformance_level:
-            rcode = 'NoAnswer'
-            req.empty_non_terminal()
+            if len(redis_labels) > 1 or redis_labels[-1] in io.REDIS_QUERY_TYPES:
+                rcode = 'NoAnswer'
+                req.empty_non_terminal()
+            else:
+                # Invalid operators can never succeed.
+                rcode = 'NXDOMAIN'
+                req.nxdomain()
             # Since strict qname minimization makes this a chronic codepath, logging is localized
             # to the case where the conformance level is not strict.
         else:
@@ -364,6 +376,8 @@ class Controller(object):
                     await asyncio.sleep(req.response_config.pending_delay_ms / 1000)
                     
                 debouncer.debounce = req.response_config.debounce
+                self.conformance_level = req.response_config.conformance
+                
             # --- Test shimming.
             #
 
@@ -399,9 +413,13 @@ class Controller(object):
                     timer.stop()
                 continue
 
-            # This is a redis query.
+            # Will this cause a redis query? This is problematic for us in that if the qtype is
+            # not in ALLOWED_QUERY_TYPES we will never perform the Redis query to test existence.
+            # In other words the best correct answer might be NXDOMAIN (does not exist) but all
+            # we can assert with confidence is that we know we won't have an answer for this
+            # qtype.
             if not req.response_config.all_queries_as_txt and req.qtype not in self.ALLOWED_QUERY_TYPES:
-                await self.response_queue.write( self.qtype_not_allowed(req) )
+                await self.response_queue.write( self.qtype_not_allowed(req, req.qlabels[:(len(req.qlabels)-len(self.zone))]) )
                 if timer is not None:
                     timer.stop()
                 continue
