@@ -1,6 +1,6 @@
 # Administration
 
-_Read this with the_ [Configuration Guide]((https://github.com/m3047/rkvdns/blob/main/Configuration.md).
+_Read this with the_ [Configuration Guide](https://github.com/m3047/rkvdns/blob/main/Configuration.md).
 
 ## Publishing Your Zone
 
