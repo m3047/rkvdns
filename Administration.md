@@ -1,5 +1,7 @@
 # Administration
 
+_Read this with the_ [Configuration Guide]((https://github.com/m3047/rkvdns/blob/main/Configuration.md).
+
 ## Publishing Your Zone
 
 The service is a nameserver as far as the DNS is concerned, and a nameserver is _authoritative_ for a zone.
