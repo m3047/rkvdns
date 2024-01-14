@@ -49,6 +49,7 @@ Values to pay attention to at this phase are:
 * `ALL_QUERIES_AS_TXT` ignores the query type and always treats it as `TXT` (the default for a lot of tools is `A`)
 * `LOG_LEVEL` setting this to `logging.INFO` maximizes logging but may not be advisable in production
 * `ENABLE_ERROR_TXT` returns error information encoded responses; not advisable in production
+* `CONFORMANCE` alters error reporting for maximum compatibility with recursing resolvers; turn this off (`False`) during verification
 
 In this phase you are validating that the _RKVDNS_ and _Redis_ servers can talk to each other and that your queries will
 be responded to correctly. You will utilize a tool like `dig` or `nslookup` and query the _RKVDNS_ server directly, without
@@ -169,7 +170,9 @@ multiple sources simultaneously. (This case is not addressed by deduplication.)
 
 #### debouncing
 
-Setting `DEBOUNCE` to `True` takes this a step further. Additional queries for the same data _from the same host address_ are discarded.
+* Set `DEBOUNCE` to `True`
+
+Additional queries for the same data _from the same host address_ will be discarded.
 
 ### Excessive queries from qname minimization
 
