@@ -151,6 +151,13 @@ SMEMBERS -- Members of a Set
     
     No ordering of returned results is guaranteed.
     
+Introspection
+-------------
+
+CONFIG -- Report Configuration Information
+
+    config.<zone>
+    
 Record Not Found Semantics
 --------------------------
 

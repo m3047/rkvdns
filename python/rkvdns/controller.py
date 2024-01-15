@@ -214,6 +214,8 @@ class Controller(object):
             rdtype.A, rdtype.AAAA, rdtype.TXT
         }
     
+    CMD_CONFIG = b'config'
+    
     def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics, control_key, debounce, conformance_level):
         self.pending_queue = pending_queue
         self.response_queue = response_queue
@@ -236,6 +238,21 @@ class Controller(object):
         self.queue_processor = event_loop.create_task(self.process_pending_queue( debounce ))
 
         return
+    
+    def cmd_config(self, req):
+        """Returns configuration information (config opcode).
+        
+        The reportable config types are int, str, bool.
+        """
+        reportable_types = set( (int, str, bool) )
+        config = req.response_config.config
+        results = []
+        for k in config.keys():
+            if type(config[k]) not in reportable_types:
+                continue
+            results.append('{}:{}'.format( k, repr(config[k]) ))
+        req.generated_answer( results )
+        return req
     
     ###############################################################################
     # RESPONSE HANDLERS
@@ -413,20 +430,29 @@ class Controller(object):
                     timer.stop()
                 continue
 
+            redis_labels = req.qlabels[:zoff]
+
             # Will this cause a redis query? This is problematic for us in that if the qtype is
             # not in ALLOWED_QUERY_TYPES we will never perform the Redis query to test existence.
             # In other words the best correct answer might be NXDOMAIN (does not exist) but all
             # we can assert with confidence is that we know we won't have an answer for this
             # qtype.
             if not req.response_config.all_queries_as_txt and req.qtype not in self.ALLOWED_QUERY_TYPES:
-                await self.response_queue.write( self.qtype_not_allowed(req, req.qlabels[:(len(req.qlabels)-len(self.zone))]) )
+                await self.response_queue.write( self.qtype_not_allowed(req, redis_labels) )
+                if timer is not None:
+                    timer.stop()
+                continue
+
+            # Right now the only introspective opcode is config.
+            if len(redis_labels) == 1 and redis_labels[0].lower() == self.CMD_CONFIG:
+                await self.response_queue.write( self.cmd_config( req ) )
                 if timer is not None:
                     timer.stop()
                 continue
                         
             # Ok, looks good.
             try:
-                query = io.RedisQuery(req.qlabels[:zoff], req.response_config.folder).finalize()
+                query = io.RedisQuery(redis_labels, req.response_config.folder).finalize()
             except io.RedisError as e:
                 await self.response_queue.write( self.parameter_error(req, e) )
                 if timer is not None:

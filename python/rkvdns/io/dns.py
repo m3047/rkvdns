@@ -466,7 +466,20 @@ class Request(object):
         """SERVFAIL -- FLUENT"""
         self.error_response(rcode.SERVFAIL, text, False)
         return self
-    
+
+    def generated_answer(self, results):
+        response = self.response = dns.message.make_response(self.request)
+        response.set_rcode(rcode.NOERROR)
+
+        all_ones = 2**16 - 1
+        response.flags &= all_ones ^ (dns.flags.RD | dns.flags.RA)
+        response.flags |= (dns.flags.QR | dns.flags.AA)
+        
+        self.answer_from_list( results, self.ttl(None) )
+        self.edns_fixup()
+
+        return self
+
     def soa(self):
         config = self.response_config
         if not (config.rkvdns_fqdn and config.soa_contact):
@@ -511,8 +524,10 @@ class Request(object):
 
         return self
     
-    def ttl(self, query):
-        ttl = query.ttl
+    def ttl(self, query=None):
+        ttl = None
+        if query is not None:
+            ttl = query.ttl
         if ttl is not None and ttl <= 0:
             ttl = None
         if ttl is None:
@@ -598,10 +613,12 @@ class Request(object):
 
         return self
     
-    def answer_from_query(self, query):
-        """Used to be part of noerror(), now deferred."""
+    def answer_from_list(self, results, ttl):
+        """Successful Response built from a list of records.
+        
+        Used to be part of noerror(), now deferred.
+        """
         config = self.response_config
-        ttl = self.ttl(query)
         
         # NOTE: Whether or not the query type is allowed is checked upstream
         #       in controller.Controller.process_pending_queue()
@@ -620,8 +637,6 @@ class Request(object):
                 convert = lambda v:self.convert_to_address(v,IPv4Address).exploded
             elif rdata_type == rdtype.AAAA:
                 convert = lambda v:self.convert_to_address(v,IPv6Address).exploded
-
-        results = query.results()
 
         rdatas = []
         for value in results:
@@ -656,6 +671,10 @@ class Request(object):
                 answer_rrset.add(rr)
 
         return self
+    
+    def answer_from_query(self, query):
+        """Successful Redis query."""
+        return self.answer_from_list( query.results(), self.ttl(query) )
     
     def truncate_response(self, limit, udp=True):
         """Truncates a response and sets the TC flag.
