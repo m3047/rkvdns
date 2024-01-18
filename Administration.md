@@ -310,6 +310,39 @@ Probes issued as part of _qname minimization_ are typically of the form `_.subzo
 a generic type `A` query is issued, attempting to elicit an `NXDOMAIN` response containing the zone's `SOA` record in the AUTHORITY section
 of the response.
 
+## Introspection: `config` operator
+
+`config` is a bare operator which reports the configuration of the _RKVDNS_ instance:
+
+```
+# dig config.redis.sophia.m3047 txt
+...
+;; ANSWER SECTION:
+config.redis.sophia.m3047. 30   IN      TXT     "debounce:True"
+config.redis.sophia.m3047. 30   IN      TXT     "redis_timeout:5"
+config.redis.sophia.m3047. 30   IN      TXT     "conformance:True"
+config.redis.sophia.m3047. 30   IN      TXT     "max_value_payload:255"
+config.redis.sophia.m3047. 30   IN      TXT     "min_ttl:5"
+config.redis.sophia.m3047. 30   IN      TXT     "redis_server:'10.0.0.224'"
+config.redis.sophia.m3047. 30   IN      TXT     "default_ttl:30"
+config.redis.sophia.m3047. 30   IN      TXT     "max_udp_payload:1200"
+config.redis.sophia.m3047. 30   IN      TXT     "return_partial_tcp:False"
+config.redis.sophia.m3047. 30   IN      TXT     "nxdomain_for_servfail:True"
+config.redis.sophia.m3047. 30   IN      TXT     "max_ttl:300"
+config.redis.sophia.m3047. 30   IN      TXT     "all_queries_as_txt:False"
+config.redis.sophia.m3047. 30   IN      TXT     "enable_error_txt:False"
+config.redis.sophia.m3047. 30   IN      TXT     "max_tcp_payload:60000"
+config.redis.sophia.m3047. 30   IN      TXT     "return_partial_value:True"
+
+;; AUTHORITY SECTION:
+REDIS.SOPHIA.m3047.     600     IN      NS      SOPHIA.M3047.
+
+;; ADDITIONAL SECTION:
+SOPHIA.m3047.           600     IN      A       10.0.0.224
+```
+
+`rkvdns_examples` provides a command line utility for reporting the configurations of all instances in a fleet in the [`fleet-management`](https://github.com/m3047/rkvdns_examples/tree/main/fleet-management) directory.
+
 -------------------
 
 For paid support: fwm.rkvdns.support.f2u@m3047.net
