@@ -390,12 +390,15 @@ class Request(object):
     def soa_record(self, rrset):
         """Adds an SOA record to the rrset for the designated section.
 
-        The minimum TTL specified in this record is used to determine the TTL
+        The minimum TTL specified on this record is used to determine the TTL
         for negative responses (NXDOMAIN and ANSWER:0). To that end we use
         what is configured as the DEFAULT_TTL rather than the MIN_TTL. This comports
         with the fact that the DEFAULT_TTL is what is returned with e.g. a keys
         query, where no TTL is associated with the entity by Redis; the most common
         cause of ANSWER:0 in our use case is a keys query returning no matches.
+        
+        Note that this is set with the rrset TTL which is applied to the SOA record,
+        not any of the TTLs supplied with the SOA record itself.
         """
         config = self.response_config
         response = self.response
@@ -413,7 +416,7 @@ class Request(object):
                                 '{}. {}. 1 {} {} 86400 {}'.format(
                                     '.'.join(config.rkvdns_fqdn),
                                     '.'.join(config.soa_contact),
-                                    config.max_ttl, config.max_ttl, config.default_ttl
+                                    config.max_ttl, config.max_ttl, config.min_ttl
                             )
                     )
             )
@@ -757,7 +760,12 @@ class Request(object):
             self.response.answer = tied_requests.answer
             if tied_requests.tc:
                 response.flags |= dns.flags.TC
-            
+        
+        # This is actually the number of rrsets in the answer rather than the actual number
+        # of rdatas, but it will also be 0 in the case of ANSWER:0
+        if not len(self.response.answer):
+            self.soa_record( self.response.authority )
+        
         try:
             wire = self.response.to_wire()
             force_truncate = False
