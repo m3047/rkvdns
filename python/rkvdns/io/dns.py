@@ -388,6 +388,15 @@ class Request(object):
         return
     
     def soa_record(self, rrset):
+        """Adds an SOA record to the rrset for the designated section.
+
+        The minimum TTL specified in this record is used to determine the TTL
+        for negative responses (NXDOMAIN and ANSWER:0). To that end we use
+        what is configured as the DEFAULT_TTL rather than the MIN_TTL. This comports
+        with the fact that the DEFAULT_TTL is what is returned with e.g. a keys
+        query, where no TTL is associated with the entity by Redis; the most common
+        cause of ANSWER:0 in our use case is a keys query returning no matches.
+        """
         config = self.response_config
         response = self.response
         if not (config.rkvdns_fqdn and config.soa_contact):
@@ -404,7 +413,7 @@ class Request(object):
                                 '{}. {}. 1 {} {} 86400 {}'.format(
                                     '.'.join(config.rkvdns_fqdn),
                                     '.'.join(config.soa_contact),
-                                    config.default_ttl, config.default_ttl, config.min_ttl
+                                    config.max_ttl, config.max_ttl, config.default_ttl
                             )
                     )
             )
