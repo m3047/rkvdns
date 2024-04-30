@@ -20,9 +20,11 @@ In a nutshell:
 "10.0.0.224;34.120.208.123;443;flow"
 ```
 
-[Here is a detailed explanation.](https://github.com/m3047/rkvdns/blob/main/Examples.md)
+* [Here is a detailed explanation.](https://github.com/m3047/rkvdns/blob/main/Examples.md)
 
 ***Use any DNS library. In any language. Async, or sync.*** Honey badger don't care.
+
+* [The cybersecurity / observability value proposition.](http://consulting.m3047.net/pfs-why/)
 
 ### DNS Scale and Failover
 
