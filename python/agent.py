@@ -293,7 +293,6 @@ import logging
 import traceback
 
 import asyncio
-from concurrent.futures import CancelledError
 from redis.exceptions import ConnectionError
 
 import dns.rdatatype as rdatatype
@@ -352,6 +351,9 @@ DEBOUNCE = False
 
 # Maximal conformance at the expense of error reporting if True
 CONFORMANCE = False
+
+# Time limit on TCP connections with no activity. Defaults to rkvdns.io.dns.TcpConnection.DEFAULT_TIMEOUT
+TCP_TIMEOUT = None
 
 if __name__ == "__main__":
     from configuration import *
@@ -488,6 +490,7 @@ def main():
                         soa_contact         = SOA_CONTACT,
                         debounce            = DEBOUNCE,
                         conformance         = CONFORMANCE,
+                        tcp_timeout         = TCP_TIMEOUT,
                         # These are for test scaffolding, but have no other impact.
                         redis_server        = redis_server,
                         redis_timeout       = 5,

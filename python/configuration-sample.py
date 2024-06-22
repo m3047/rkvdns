@@ -33,6 +33,9 @@
 # the request is via UDP) the server returns NXDOMAIN instead of SERVFAIL. This
 # does not affect logging.
 #NXDOMAIN_FOR_SERVFAIL = False
+# The maximum time in seconds that TCP connections with no activity are kept open.
+# Defaults to 30 seconds.
+# TCP_TIMEOUT = None
 
 # Regardless of the query type, the result is always TXT if True.
 #ALL_QUERIES_AS_TXT = False

@@ -44,6 +44,7 @@ import concurrent.futures
 from random import random
 import time
 import threading
+import socket
 
 if '..' not in sys.path:
     sys.path.insert(0,'..')
@@ -69,6 +70,7 @@ DEFAULT_CONFIG = dict(
         max_value_payload = 255,
         return_partial_tcp = 'False',
         return_partial_value = 'False',
+        tcp_timeout = 30,
             
         all_queries_as_txt = 'False',
         case_folding = 'None',
@@ -490,20 +492,29 @@ class TestInfrastructure(WithRedis):
     PENDING_QUEUE_DELAY = 1.5
     NUMBER_OF_QUERIES = int(HOW_LONG_IS_LONG_IN_SECONDS / PENDING_QUEUE_DELAY)
     
-    INCREMENTING = 'incrementing'
+    INCREMENTING = config.CONTROL_KEY + 'incrementing'
     
     RESOLVER = False
     THREADING = True
     
     def issuingThread(self, id, timeout=None):
         with self.locks['query']:
-            query = query = dns.message.make_query( id + '.get.' + self.zone, 'TXT' )
+            query = dns.message.make_query( id + '.get.' + self.zone, 'TXT' )
         with self.locks['resp']:
             try:
                 resp = dns.query.udp(query, config.INTERFACE, timeout=timeout)
             except:
                 resp = None
         return resp
+    
+    def make_bad_tcp_query(self, qualifier):
+        query = dns.message.make_query( config.CONTROL_KEY + '_nonexistent' + str(qualifier) + '.get.' + self.zone, 'TXT' ).to_wire()
+        sock = socket.create_connection( (config.INTERFACE, 53) )
+        sock.sendall( len(query).to_bytes(2, byteorder='big') + query )
+        self.assertGreater( len(sock.recv(4096)), 0 )
+        self.assertEqual( len(sock.recv(4096)), 0)
+        sock.close()
+        return
     
     def test_marshalling_fast_fast(self):
         """Fast issue, fast response.
@@ -610,6 +621,43 @@ class TestInfrastructure(WithRedis):
         self.assertEqual( sum(results.values()), self.NUMBER_OF_QUERIES )
         return
     
+    def test_tcp_timeout_3(self):
+        """TCP timeout.
+        
+        Takes less than 30 seconds to run.
+        
+        THIS TEST MAY HANG if something is amiss.
+        """
+
+        # The timeout values in the real world are determined by the values of
+        # DEFAULT_TIMEOUT and TIMEOUT_PADDING in rkvdns.io.dns.TcpConnection and
+        # we're using magic numbers here.        
+        self.set_config(tcp_timeout=3)
+        start = time.time()
+        self.make_bad_tcp_query(3)
+        self.assertLess(time.time()-start, 5)
+        return
+    
+    def test_tcp_timeout_8(self):
+        """TCP timeout.
+        
+        Takes less than 30 seconds to run.
+        
+        THIS TEST MAY HANG if something is amiss.
+        """
+
+        # The timeout values in the real world are determined by the values of
+        # DEFAULT_TIMEOUT and TIMEOUT_PADDING in rkvdns.io.dns.TcpConnection and
+        # we're using magic numbers here.
+        self.set_config(tcp_timeout=8)
+        start = time.time()
+        
+        self.make_bad_tcp_query(8)
+        
+        self.assertGreater(time.time()-start, 5)        
+        self.assertLess(time.time()-start, 10)
+        return
+
 class TestProtocol( WithRedis ):
     """Tests Application-Level Protocol Issues.
     

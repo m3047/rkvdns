@@ -54,15 +54,21 @@ We will return the smaller of the requested payload size or the value of
 MAX_UDP_PAYLOAD with our EDNS response.
 """
 
+import sysconfig
+
+PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
+
 import sys
 import logging
 import traceback
 from math import floor
 
-from time import time
-
 import asyncio
-#from concurrent.futures import ThreadPoolExecutor
+
+if PYTHON_IS_311:
+    from asyncio import CancelledError
+else:
+    from concurrent.futures import CancelledError
 
 import re
 
@@ -173,9 +179,19 @@ class TcpPlug(DnsPlug):
 DnsPlug.CLASSES = {UdpPlug, TcpPlug}
 
 class TcpConnection(object):
-    """The TcpPlug.stream object."""
+    """The TcpPlug.stream object.
     
-    def __init__(self, reader, writer):
+    As part of its encapsulation function, maintains a watchdog timer which will
+    close the connection after a DEFAULT_TIMEOUT + TIMEOUT_PADDING period of inactivity.
+    """
+    DEFAULT_TIMEOUT = 30
+    TIMEOUT_PADDING = 1
+    
+    def __init__(self, reader, writer, event_loop, timeout=None):
+        self.timeout = timeout or self.DEFAULT_TIMEOUT
+        self.expiry = None
+        self.watchdog = None
+        self.event_loop = event_loop
         self.reader = reader
         self.writer = writer
         return
@@ -184,8 +200,45 @@ class TcpConnection(object):
     def closed(self):
         return self.writer is None
     
+    def update_watchdog_timer(self):
+        self.expiry = self.event_loop.time() + self.timeout
+        if not self.watchdog:
+            self.create_watchdog()
+        return
+    
+    def create_watchdog(self):
+        self.watchdog = self.event_loop.call_at( self.expiry + self.TIMEOUT_PADDING, self.timeout_watchdog )
+        return
+    
+    def timeout_watchdog(self):
+        if self.event_loop.time() < self.expiry:
+            self.create_watchdog()
+            return
+        self.watchdog = None
+        self.close_()
+        return
+    
+    def read(self, n):
+        """Read bytes from the stream. (awaitable)
+        
+        The timeout is reset each time this is called.
+        """
+        self.update_watchdog_timer()
+        return self.reader.read(n)
+    
     def close(self):
-        if self.writer is None:
+        if self.watchdog:
+            self.watchdog.cancel()
+            # Callback not an awaitable task.
+            #try:
+                #await self.watchdog
+            #except CancelledError:
+                #pass
+            self.watchdog = None
+        self.close_()
+
+    def close_(self):
+        if self.closed:
             return
         self.writer.close()
         self.reader = self.writer = None
@@ -298,7 +351,6 @@ class Request(object):
         for k in deletions:
             del patches[k]
         self.response_config.config.update(patches)
-        self.response_config.config['patched'] = True
         return
     
     def with_config(self, config, stats):
@@ -306,6 +358,9 @@ class Request(object):
         self.response_config = config
         if config.control_key:
             self.patch_for_test()
+            self.response_config.config['patched'] = True
+        else:
+            self.response_config.config['patched'] = False
         if stats:
             self.timer = stats.start_timer()
         else:
@@ -835,15 +890,15 @@ class DnsIOControl(object):
         """Multiple requests are possible on a TCP connection."""
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('> handle_tcp_requests')
-
-        connection = TcpConnection(reader, writer)        
+        
+        connection = TcpConnection(reader, writer, self.event_loop, self.response_config.tcp_timeout)
         while True:
-            request = await reader.read(2)
+            request = await connection.read(2)
             request_length = int.from_bytes(request, byteorder='big')
             if not request_length:
                 break
             while request_length:
-                partial = await reader.read(request_length)
+                partial = await connection.read(request_length)
                 if not len(partial):
                     break
                 request += partial
@@ -856,6 +911,9 @@ class DnsIOControl(object):
                 timer = None
                 
             request = Request.TcpIO(connection).from_wire(request).with_config(self.response_config, self.request_stats)
+            # NOTE: Supports test automation. One request is required to "prime the pump".
+            if request.response_config.patched:
+                connection.timeout = request.response_config.tcp_timeout
 
             # The reason we do this for the TCP case and not the UDP case is backpressure.
             if PRINT_COROUTINE_ENTRY_EXIT:
@@ -873,7 +931,7 @@ class DnsIOControl(object):
         connection.close()
 
         if PRINT_COROUTINE_ENTRY_EXIT:
-            PRINT_COROUTINE_ENTRY_EXIT('> handle_tcp_requests')
+            PRINT_COROUTINE_ENTRY_EXIT('< handle_tcp_requests')
         return
         
     def create_tcp_listener(self, interface, port, tcp_max_read):
