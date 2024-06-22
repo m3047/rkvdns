@@ -112,14 +112,31 @@ class DictOfRequests(dict):
         return
 
 class Debouncer(object):
-    """Time-bounded duplicate detector."""
+    """Time-bounded duplicate detector.
+    
+    Accelerated catchup for the Bucket Cache
+    ----------------------------------------
+    
+    One bucket is maintained for each second in the debouncing window. This means that
+    every second we discard an old bucket and create a new one. No reason to do this for
+    a large number of idle seconds though.
+    
+    So if the server has been idle for more than ACCELERATED_CATCHUP * DEBOUNCING_WINDOW
+    then we reinitialize the buckets / debouncers.
+    """
+    ACCELERATED_CATCHUP = 3
+    
     def __init__(self, redis_stats, seconds=DEBOUNCING_WINDOW, debounce=False):
         """Default is to debounce for 5 seconds."""
         self.redis_stats = redis_stats
         self.seconds = seconds
+        self.debounce = debounce
+        self.init_debouncer_buckets()
+        return
+    
+    def init_debouncer_buckets(self):
         self.buckets = [ DictOfRequests() ]
         self.debouncers = [ set() ]
-        self.debounce = debounce
         self.last = int(time())
         return
     
@@ -144,6 +161,8 @@ class Debouncer(object):
         """
         now = time()
         if now > self.last:
+            if (now - self.last) > (self.seconds * self.ACCELERATED_CATCHUP):
+                self.init_debouncer_buckets()
             while now > self.last:
                 self.buckets.insert( 0, DictOfRequests() )
                 if self.debounce:
