@@ -200,6 +200,16 @@ class TcpConnection(object):
     def closed(self):
         return self.writer is None
     
+    def update_for_test(self, timeout):
+        """Update timeout for testing.
+        
+        Used ONLY for testing, not to be used in production.
+        """
+        self.watchdog.cancel()
+        self.watchdog = None
+        self.timeout = timeout
+        return
+    
     def update_watchdog_timer(self):
         self.expiry = self.event_loop.time() + self.timeout
         if not self.watchdog:
@@ -266,6 +276,7 @@ class Request(object):
                              'incrementing', 'debounce', 'conformance'
                             )
     REDIS_FIXUP_VALUES = { 'False':False, 'True':True, 'None':None }
+    REDIS_FIXUP_FQDN_KEYS = ('zone', 'rkvdns_fqdn', 'soa_contact')
     #
     # Anything not enumerated above is expected to be integer-valued (or capable of being
     # converted to an integer value.
@@ -343,6 +354,8 @@ class Request(object):
                     #patches[k] = FOLDERS[patches[k]]
                     deletions.add('case_folding')
                     self.response_config.config['folder'] = FOLDERS[patches[k]]
+            elif k in self.REDIS_FIXUP_FQDN_KEYS:
+                patches[k] = patches[k].split('.')
             else:
                 try:
                     patches[k] = int(patches[k])
@@ -890,7 +903,7 @@ class DnsIOControl(object):
         """Multiple requests are possible on a TCP connection."""
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('> handle_tcp_requests')
-        
+
         connection = TcpConnection(reader, writer, self.event_loop, self.response_config.tcp_timeout)
         while True:
             request = await connection.read(2)
@@ -913,7 +926,7 @@ class DnsIOControl(object):
             request = Request.TcpIO(connection).from_wire(request).with_config(self.response_config, self.request_stats)
             # NOTE: Supports test automation. One request is required to "prime the pump".
             if request.response_config.patched:
-                connection.timeout = request.response_config.tcp_timeout
+                connection.update_for_test( request.response_config.tcp_timeout )
 
             # The reason we do this for the TCP case and not the UDP case is backpressure.
             if PRINT_COROUTINE_ENTRY_EXIT:
