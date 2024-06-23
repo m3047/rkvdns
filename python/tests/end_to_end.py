@@ -79,8 +79,8 @@ DEFAULT_CONFIG = dict(
         default_ttl = 30,
         min_ttl = 5,
         conformance = 'False',
-        rkvdns_fqdn = ['dev','null'],
-        soa_contact = ['dev','null']
+        rkvdns_fqdn = 'dev.null',
+        soa_contact = 'dev.null'
     )
 
 class WithRedis(unittest.TestCase):
