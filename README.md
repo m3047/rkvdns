@@ -26,6 +26,10 @@ In a nutshell:
 
 * [The cybersecurity / observability value proposition.](http://consulting.m3047.net/pfs-why/)
 
+In case you're looking for a checklist to scope your own DNS server project, here's the checklist I wish I'd had when I wrote this:
+
+* [DNS Server Implementation Checklist](http://consulting.m3047.net/dubai-letters/dns-server-checklist.html)
+
 ### DNS Scale and Failover
 
 DNS scales really well. It's a well understood problem. Many server implementations exist, and many scaling techniques as well.
