@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2025 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -138,7 +138,28 @@ SCARD -- Number of Elements in a Set
     Get the number of elements in the "foo" set:
     
     foo.scard.redis.example.com
+
+SHARDS -- Unique Elements of a KEYS Query
+
+    <pattern>.shards.<zone>
     
+    Returns the unique, wildcarded portions of a KEYS query.
+
+    foo*.shards.redis.example.com
+    
+    Multiple wildcarded parts are returned as lists of strings in a single TXT record:
+    
+    foo*bar*.shards.redis.example.com
+    
+    Using two asterisks suppresses that portion of the shard. The previous command
+    returns everything between "foo" and "bar", and also everything from "bar" to
+    the end of the key. The following returns only everything from "bar" to the end
+    of the key:
+    
+    foo**bar*.shards.redis.example.com
+
+    This operator is not part of the Redis distribution.
+
 SMEMBERS -- Members of a Set
 
     <key>.smembers.<zone>
