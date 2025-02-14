@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2024 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2025 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -32,19 +32,6 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 import re
-
-#import dns.message
-#import dns.rdatatype as rdtype
-#import dns.rcode as rcode
-#from dns.rdataset import Rdataset
-#import dns.rdataclass as rdcls
-#import dns.rdata as rdata
-#import dns.rrset as rrset
-#from dns.rdtypes.ANY.TXT import TXT
-#import dns.flags
-#from dns.exception import TooBig
-#import dns.name
-
 import redis
 
 from ipaddress import IPv4Address, IPv6Address
@@ -62,6 +49,54 @@ DEBUG_FOLDING = None
 #################################################################################
 # REDIS QUERY
 #################################################################################
+
+class ShardDecoder(object):
+    """Handles conversion and processing of shards for RedisShardsQuery.
+    
+    Shards are wildcarded parts of the keyspec passed to keys(). If there
+    is more than one wildcarded part of the keyspec and you don't want to
+    return a part, specify "**" as the wildcard rather than "*". It will still
+    be passed to Redis as "*", but the resulting part of returned keys will
+    not be returned as part of the shard.
+    """
+    
+    WILDCARD_SEPARATOR = re.compile(b'(\*+)')
+    
+    def __init__(self, key):
+        
+        self.key_ = [
+                part[0] == b'*' and part[:2] or part
+                for part in
+                self.WILDCARD_SEPARATOR.split(key)
+                if part
+            ]
+
+        parts = []
+        for part in self.key_:
+            if   part == b'**':
+                parts.append(b'.*')
+            elif part == b'*':
+                parts.append(b'(.*)')
+            else:
+                parts.append( part )
+        self.shards = re.compile(b''.join(parts))
+
+        return
+    
+    @property
+    def key(self):
+        """The actual keyspec passed to Redis."""
+        return b''.join(
+                part[0] == b'*' and b'*' or part
+                for part in self.key_
+            )
+    
+    def sharded(self, value):
+        """Extract and return sharded values as tuples."""
+        matched = self.shards.fullmatch(value)
+        if matched is None:
+            return None
+        return matched.groups()
     
 class RedisError(Exception):
     pass
@@ -258,6 +293,21 @@ class RedisSCardQuery(RedisBaseQuery):
         """Returns the cardinality of a set."""
         return conn.scard(self.key)
 
+class RedisShardsQuery(RedisBaseQuery):
+    PARAMETERS = ( 'key', 'operand' )
+    MULTIVALUED = True
+    HAS_TTL = False
+    
+    def query(self, conn):
+        sharder = ShardDecoder( self.key )
+        shards = set()
+        for k in conn.keys( sharder.key ):
+            sharded = sharder.sharded( k )
+            if sharded is None:
+                continue
+            shards.add( sharded )
+        return list( shards )
+
 class RedisSMembersQuery(RedisBaseQuery):
     PARAMETERS = ( 'key', 'operand' )
     MULTIVALUED = True
@@ -278,6 +328,7 @@ REDIS_QUERY_TYPES = {
         b'llen'    : RedisLLenQuery,
         b'lrange'  : RedisLRangeQuery,
         b'scard'   : RedisSCardQuery,
+        b'shards'  : RedisShardsQuery,
         b'smembers': RedisSMembersQuery
     }
 

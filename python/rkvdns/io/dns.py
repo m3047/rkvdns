@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2024 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2025 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -676,12 +676,12 @@ class Request(object):
     TXT_CONVERTERS = {
             str:    lambda v: v.encode(),
             bytes:  lambda v: v,
-            int:    lambda v: str(v).encode()
+            int:    lambda v: str(v).encode(),
+            tuple:  lambda v: v
         }
 
     def noerror(self):
         """NOERROR / success -- FLUENT"""
-        #self.proc_stats.start('NOERROR overall')
         response = self.response = dns.message.make_response(self.request)
         response.set_rcode(rcode.NOERROR)
 
@@ -693,6 +693,16 @@ class Request(object):
 
         return self
     
+    @staticmethod
+    def to_rdata_txt( v ):
+        """Make TXT rdata.
+        
+        TXT rdata can be single strings, or preserved lists of strings.
+        """
+        if type(v) is not tuple:
+            v = tuple(v)
+        return TXT(rdcls.IN, rdtype.TXT, v)
+       
     def answer_from_list(self, results, ttl):
         """Successful Response built from a list of records.
         
@@ -704,11 +714,11 @@ class Request(object):
         #       in controller.Controller.process_pending_queue()
         # NOTE: Using rdata_class and rdata_type inside of closures is ok here
         #       because the closure changes accordingly.
+        convert = lambda v: self.TXT_CONVERTERS[type(v)](v)
+        to_rdata = self.to_rdata_txt
+
         rdata_class = rdcls.IN
         rdata_type = rdtype.TXT
-        convert = lambda v: self.TXT_CONVERTERS[type(v)](v)
-        to_rdata = lambda v: TXT(rdata_class, rdata_type, [v])
-
         query_type = self.request.question[0].rdtype
         if not (config.all_queries_as_txt or query_type == rdtype.TXT):
             rdata_type = query_type
