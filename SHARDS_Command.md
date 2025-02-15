@@ -1,8 +1,8 @@
 # The `SHARDS` Command
 
-There is no `SHARDS` command in _Redis_ (although they have my blessing to implement it). This software is released as open source under the _AGPL_ and
+There is no `SHARDS` command in _Redis_ (although they have my blessing to implement it). This software (RKVDNS) is released as open source under the _AGPL_ and
 my philosophy is to encourage "shift left" (change what you write to _Redis_) and "shift right" (postprocess what you retrieve from _Redis_), but this
-comports well with the use cases which often come up in my stories of what I do with data. So, here it is.
+comports well with the use cases which often come up in my stories of what I do with data. So, here it is. -- Fred Morris, February 2025
 
 `SHARDS` performs a `KEYS` operation internally, but only returns the unique wildcarded parts of the query string. A query string for `SHARDS` can be the
 very same, wildcarded, query string you'd use with `KEYS`:
