@@ -729,15 +729,22 @@ class Request(object):
                 convert = lambda v:self.convert_to_address(v,IPv6Address).exploded
 
         rdatas = []
+        first_time = True
         for value in results:
             try:
+                # This little hack makes it possible for SHARDS to return A / AAAA.
+                if rdata_type != rdtype.TXT and type(value) is tuple:
+                    if len(value) == 1:
+                        value = value[0]
                 v = to_rdata( convert( value ) )
                 if v:
                     rdatas.append(v)
-            except ValueError:
-                logging.warning('Unprocessable value for {} ({}) from {}'.format(
-                    self.request.question[0].name.to_text(), rdtype.to_text(rdata_type), self.plug.query_address
-                ))
+            except (TypeError, ValueError):
+                if first_time:
+                    logging.warn('Unprocessable value for {} ({}) from {}'.format(
+                        self.request.question[0].name.to_text(), rdtype.to_text(rdata_type), self.plug.query_address
+                    ))
+                    first_time = False
 
         if len(rdatas):
             response = self.response
