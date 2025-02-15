@@ -700,7 +700,7 @@ class Request(object):
         TXT rdata can be single strings, or preserved lists of strings.
         """
         if type(v) is not tuple:
-            v = tuple(v)
+            v = [ v ]
         return TXT(rdcls.IN, rdtype.TXT, v)
        
     def answer_from_list(self, results, ttl):
