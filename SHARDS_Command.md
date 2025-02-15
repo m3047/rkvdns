@@ -54,7 +54,7 @@ This is the same pattern passed to the `SHARDS` operator.
 "34.149.100.209;443"
 ```
 
-##### mulltiple wildcards
+##### multiple wildcards
 
 Here we modify the pattern to capture the address and port separately.
 
