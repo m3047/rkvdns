@@ -75,7 +75,10 @@ The following operations are supported:
 * `KEYS`
 * `LINDEX`
 * `LRANGE`
+* `SHARDS` see [SHARDS_Command.md](SHARDS_Command.md)
 * `SMEMBERS`
+
+The only operator which is not a _Redis_ operator is `SHARDS`.
 
 ##### "Length-of" Operators
 
@@ -88,7 +91,7 @@ the underlying entry:
 * `LLEN` -- The number of entries in a list.
 * `SCARD` -- The number of entries in a set.
 
-The only ones of these which doesn't correspond to a _Redis_ operator are `KLEN` and `KPLEN`.
+The only ones of these which don't correspond to a _Redis_ operator are `KLEN` and `KPLEN`.
 
 -------------------
 
