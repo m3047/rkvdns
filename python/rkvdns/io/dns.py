@@ -748,7 +748,6 @@ class Request(object):
             answer_rrset.ttl = ttl
             for rr in rdatas:
                 if rdata_type == rdtype.TXT:
-                    # There is really ever only one string because we set it explicitly above.
                     rd = b''.join(rr.strings)
                     if len(rd) > config.max_value_payload:
                         logging.warn('Max single value length ({}) exceeded for {} from {}'.format(
