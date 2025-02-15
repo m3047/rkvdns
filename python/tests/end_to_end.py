@@ -477,6 +477,28 @@ class TestQueries(WithRedis):
         self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.4')
         return
 
+    def test_shards(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_shard_'
+        self.redis.incr(key + 'foo_bar')
+        resp = self.resolver.query(key + '*_*' + '.shards.' + self.zone, 'TXT')
+        self.assertTrue(isinstance(resp.response.answer[0][0], TXT))
+        self.assertEqual(resp.response.answer[0][0].strings[0], b'foo')
+        self.assertEqual(resp.response.answer[0][0].strings[1], b'bar')
+        return
+    
+    def test_shards_a(self):
+        self.set_config()
+        key = config.CONTROL_KEY + '_shard_a_'
+        self.redis.incr(key + '42_3047')
+        resp = self.resolver.query(key + '*_*' + '.shards.' + self.zone, 'A', raise_on_no_answer=False)
+        self.assertEqual(resp.response.rcode(), 0)
+        self.assertEqual(len(resp.response.answer), 0)
+        resp = self.resolver.query(key + '*_**' + '.shards.' + self.zone, 'A')
+        self.assertEqual(resp.response.rcode(), 0)
+        self.assertEqual(resp.response.answer[0][0].to_text(), '0.0.0.42')
+        return
+    
 class TestInfrastructure(WithRedis):
     """Tests infrastructure, things which aren't knobs or dials.
     
