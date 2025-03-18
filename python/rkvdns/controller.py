@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2024 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2025 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -309,9 +309,9 @@ class Controller(object):
         else:
             rcode = 'FORMERR'
             req.formerr('Operation not specified.')
-        logging.warning('{}: Operation not specified in: {} from: {}'.format(
-                rcode, req.request.question[0].name.to_text(), req.plug.query_address
-            ))
+            logging.warning('{}: Operation not specified in: {} from: {}'.format(
+                    rcode, req.request.question[0].name.to_text(), req.plug.query_address
+                ))
         return req
     
     def qtype_not_allowed(self, req, redis_labels):
