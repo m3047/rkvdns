@@ -205,8 +205,13 @@ class Debouncer(object):
         return reply_callback( req, request_list.query, request_list )
 
     async def complete_pending_requests( self, reply_callback, tied_requests, query, redis_timer):
-        """Complete any pending requests."""
-
+        """Complete any pending requests.
+        
+        Redis has finished running at this point, we are finalizing all marshalled requests.
+        """
+        if redis_timer is not None:
+            redis_timer.stop()
+        
         for req in tied_requests.requests:
             await reply_callback(req, query, tied_requests)
 
