@@ -409,8 +409,10 @@ class RedisIO(object):
         finisher = asyncio.run_coroutine_threadsafe(
                         self.finish_job(exc, result, callback, promise), self.event_loop
                     )
-        promise.append(finisher)
-        self.finishers.add(finisher)
+        if not promise:
+            promise.append(finisher)
+            self.finishers.add(finisher)
+
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< redis_job')
         return
@@ -427,7 +429,10 @@ class RedisIO(object):
 
         if exc is None or not self.leak_semaphore_if_exception:
             self.semaphore.release()
-        self.finishers.remove(promise[0])
+        if promise:
+            self.finishers.remove(promise[0])
+        else:
+            promise.append( None )
 
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT('< finish_job')
