@@ -496,8 +496,9 @@ class Controller(object):
                 elif redis_labels[0].lower() == self.CMD_QUEUES:
                     await self.response_queue.write( self.cmd_queues( req ) )
                     handled = True
-                if handled and timer is not None:
-                    timer.stop()
+                if handled:
+                    if timer is not None:
+                        timer.stop()
                     continue
                 
             # Ok, looks maybe good.
