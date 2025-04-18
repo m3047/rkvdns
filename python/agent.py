@@ -178,6 +178,10 @@ Introspection
 CONFIG -- Report Configuration Information
 
     config.<zone>
+
+QUEUES -- Report Depth of some Internally Managed Queues
+
+    queues.<zone>
     
 Record Not Found Semantics
 --------------------------
