@@ -427,7 +427,7 @@ async def statistics_report(statistics, frequency):
             STATISTICS_PRINTER(format_statistics(stat))
     return
 
-async def queue_depth_report(pending, response):
+async def queue_depth_report(pending, response, redis_io):
     """The queue depth report.
     
     To operate "backpressure", three queues are managed (along with the
@@ -436,17 +436,18 @@ async def queue_depth_report(pending, response):
     * Pending   A single pending queue is utilized for both TCP and UDP requests.
     * TcpPlug   The TCP write queue.
     * UdpPlug   The Udp write queue.
+    * RedisIO   RedisIO.finish_job() promises.
     """
     logging.info('queue_depth_report started')
     while True:
         await asyncio.sleep(QUEUE_DEPTH)
         STATISTICS_PRINTER(
             '    '.join(
-                ((  '{}:{}'.format(k, q.qsize())
-                    for k,q in sorted(
-                        kv for kv in ([('Pending',pending)] + list(response.queues))
-                    )
-                ))
+                '{}:{}'.format(k,v)
+                for k,v in sorted(
+                      [ ('Pending',pending.qsize()), ('RedisIO', len(redis_io.finishers)) ]
+                    + [ ( k, q.qsize() ) for k,q in response.queues ]
+                )
             )
         )
     return
@@ -528,7 +529,7 @@ def main():
                              response_config.control_key, response_config.debounce, response_config.conformance )
 
     if QUEUE_DEPTH:
-        depth_routine = event_loop.create_task( queue_depth_report(pending_queue, response_queue) )
+        depth_routine = event_loop.create_task( queue_depth_report(pending_queue, response_queue, redis_io) )
         
     try:
         event_loop.run_forever()

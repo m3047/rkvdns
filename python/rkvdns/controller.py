@@ -239,6 +239,8 @@ class Controller(object):
         }
     
     CMD_CONFIG = b'config'
+    CONFIG_REPORTABLE_TYPES = { int, str, bool}
+    CMD_QUEUES = b'queues'
     
     def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics, control_key, debounce, conformance_level):
         self.pending_queue = pending_queue
@@ -268,16 +270,34 @@ class Controller(object):
         
         The reportable config types are int, str, bool.
         """
-        reportable_types = set( (int, str, bool) )
         config = req.response_config.config
         results = []
         for k in config.keys():
-            if type(config[k]) not in reportable_types:
+            if type(config[k]) not in self.CONFIG_REPORTABLE_TYPES:
                 continue
             results.append('{}:{}'.format( k, repr(config[k]) ))
         req.generated_answer( results )
         return req
     
+    def cmd_queues(self, req):
+        """Returns the depth of some internal queues (queues opcode).
+        
+        Reports the same information as the QUEUE_DEPTH (configurable) report:
+        
+        * Pending   A single pending queue is utilized for both TCP and UDP requests.
+        * TcpPlug   The TCP write queue.
+        * UdpPlug   The Udp write queue.
+        * RedisIO   RedisIO.finish_job() promises.
+        """
+        results = [
+            '{}:{}'.format(k,v)
+            for k,v in
+                  [ ('Pending',self.pending_queue.qsize()), ('RedisIO', len(self.redis_io.finishers)) ]
+                + [ ( k, q.qsize() ) for k,q in self.response_queue.queues ]
+        ]
+        req.generated_answer( results )
+        return req
+        
     ###############################################################################
     # RESPONSE HANDLERS
     ###############################################################################
@@ -467,14 +487,20 @@ class Controller(object):
                     timer.stop()
                 continue
 
-            # Right now the only introspective opcode is config.
-            if len(redis_labels) == 1 and redis_labels[0].lower() == self.CMD_CONFIG:
-                await self.response_queue.write( self.cmd_config( req ) )
-                if timer is not None:
+            # Introspective opcodes with no parameters / arguments.
+            if len(redis_labels) == 1:
+                handled = False
+                if   redis_labels[0].lower() == self.CMD_CONFIG:
+                    await self.response_queue.write( self.cmd_config( req ) )
+                    handled = True
+                elif redis_labels[0].lower() == self.CMD_QUEUES:
+                    await self.response_queue.write( self.cmd_queues( req ) )
+                    handled = True
+                if handled and timer is not None:
                     timer.stop()
-                continue
-                        
-            # Ok, looks good.
+                    continue
+                
+            # Ok, looks maybe good.
             try:
                 query = io.RedisQuery(redis_labels, req.response_config.folder).finalize()
             except io.RedisError as e:
