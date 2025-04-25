@@ -54,9 +54,7 @@ We will return the smaller of the requested payload size or the value of
 MAX_UDP_PAYLOAD with our EDNS response.
 """
 
-import sysconfig
-
-PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
+from .. import PYTHON_IS_311
 
 import sys
 import logging

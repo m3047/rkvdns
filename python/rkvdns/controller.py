@@ -22,6 +22,7 @@ import asyncio
 import dns.rdatatype as rdtype
 
 from . import io
+from . import CountingDict, PYTHON_IS_311
 
 # Start/end of coroutines.
 PRINT_COROUTINE_ENTRY_EXIT = None
@@ -241,6 +242,7 @@ class Controller(object):
     CMD_CONFIG = b'config'
     CONFIG_REPORTABLE_TYPES = { int, str, bool}
     CMD_QUEUES = b'queues'
+    CMD_COROUTINES = b'coroutines'
     
     def __init__(self, pending_queue, response_queue, redis_io, event_loop, zone, statistics, control_key, debounce, conformance_level):
         self.pending_queue = pending_queue
@@ -271,11 +273,11 @@ class Controller(object):
         The reportable config types are int, str, bool.
         """
         config = req.response_config.config
-        results = []
-        for k in config.keys():
-            if type(config[k]) not in self.CONFIG_REPORTABLE_TYPES:
-                continue
-            results.append('{}:{}'.format( k, repr(config[k]) ))
+        results = [
+            '{}:{}'.format( k, repr(config[k]) )
+            for k in config.keys()
+            if type(config[k]) in self.CONFIG_REPORTABLE_TYPES
+        ]
         req.generated_answer( results )
         return req
     
@@ -298,6 +300,20 @@ class Controller(object):
         req.generated_answer( results )
         return req
         
+    def cmd_coroutines(self, req):
+        """Returns counts of all scheduled coroutines."""
+
+        counts = CountingDict()
+        for task in (PYTHON_IS_311 and asyncio.all_tasks() or asyncio.Task.all_tasks()):
+            counts.increment(task._coro.__name__)        
+
+        results = [
+            '{}:{}'.format(k,v)
+            for k,v in counts.items()
+        ]
+        req.generated_answer( results )
+        return req
+
     ###############################################################################
     # RESPONSE HANDLERS
     ###############################################################################
@@ -495,6 +511,9 @@ class Controller(object):
                     handled = True
                 elif redis_labels[0].lower() == self.CMD_QUEUES:
                     await self.response_queue.write( self.cmd_queues( req ) )
+                    handled = True
+                elif redis_labels[0].lower() == self.CMD_COROUTINES:
+                    await self.response_queue.write( self.cmd_coroutines( req ) )
                     handled = True
                 if handled:
                     if timer is not None:

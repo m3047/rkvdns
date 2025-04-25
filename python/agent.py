@@ -183,6 +183,10 @@ QUEUES -- Report Depth of some Internally Managed Queues
 
     queues.<zone>
     
+COROUTINES -- Report Counts of all Scheduled Coroutines
+
+    coroutines.<zone>
+    
 Record Not Found Semantics
 --------------------------
 
@@ -309,9 +313,7 @@ multiple DNS queries from the same Redis query when possible. Marshalling is alw
 enabled.
 """
 
-import sysconfig
-
-PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
+from rkvdns import PYTHON_IS_311
 
 import sys
 import logging
