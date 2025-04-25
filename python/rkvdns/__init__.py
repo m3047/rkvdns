@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022 Fred Morris, Tacoma WA USA
+# Copyright (c) 2022,2025 Fred Morris, Tacoma WA USA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -11,6 +11,18 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import sysconfig
+
+PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
+
+class CountingDict(dict):
+    """A dictionary of counters."""
+    def inc(self, k, v=1):
+        if k not in self:
+            self[k] = 0
+        self[k] += v
+        return
 
 class FunctionResult(object):
     """Semantic sugar for loop conditionals."""
