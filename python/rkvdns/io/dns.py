@@ -297,11 +297,6 @@ class Request(object):
         # self.udp_limit -- edns_fixup()
         # self.response_config -- with_config()
         
-        # NOTE: The following diagnostics provide timing, iteration and size statistics
-        # for requests. Uncomment the definition of CountingDict and the occurrences
-        # of proc_stats in Request and DnsIOControl.write_control.
-        #self.proc_stats = CountingDict()
-
         return
 
     @classmethod
