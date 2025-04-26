@@ -1127,8 +1127,8 @@ class DnsResponseQueue(object):
             self.needed = set()
             # This is basically an assertion to make sure we're listening once and only once
             # to every queue.
-            if len(pending) != len(self.queues):
-                logging.error('DnsResponseQueue pending should be {}, is {}'.format( len(self.queues), len(pending) ))
+            if len(pending) != len(self.queue):
+                logging.error('DnsResponseQueue pending should be {}, is {}'.format( len(self.queue), len(pending) ))
 
             done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
 
