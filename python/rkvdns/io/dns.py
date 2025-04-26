@@ -1121,10 +1121,10 @@ class DnsResponseQueue(object):
                 pass
             
             # Refill the pending tasks
-            for item in needed:
+            for item in self.needed:
                 # What gets added here will be awaited below by asyncio.wait()
                 pending.add( self.event_loop.create_task( self.wrappers[item].get() ) )
-            needed = set()
+            self.needed = set()
             # This is basically an assertion to make sure we're listening once and only once
             # to every queue.
             if len(pending) != len(self.queues):
