@@ -1054,6 +1054,22 @@ class UDPListener(asyncio.DatagramProtocol):
         self.control.create_udp_handler( request, addr )
         return
 
+class DnsResponseTaskWrapper(object):
+    """Wraps the awaited Queue.get() calls."""
+    def __init__(self, plug_class, response_queue):
+        self.plug_class = plug_class
+        self.response_queue = response_queue
+        return
+    
+    async def get(self):
+        """Wrapper for Queue.get().
+        
+        It has a side effect that it adds our plug_class to response_queue.needed.
+        """
+        result = await self.response_queue[self.plug_class].get()
+        response_queue.needed.add(self.plug_class)
+        return result
+
 class DnsResponseQueue(object):
     """Encapsulates the TCP and UDP response queues.
     
@@ -1061,11 +1077,13 @@ class DnsResponseQueue(object):
     """
     
     def __init__(self, queue_depth, loop):
-        self.queue = {
-                cls: asyncio.Queue(queue_depth)
-                for cls in DnsPlug.CLASSES
-            }
+        self.queue = {}
+        self.wrappers = {}
+        for cls in DnsPlug.CLASSES:
+            self.queue[cls] = asyncio.Queue(queue_depth)
+            self.wrappers[cls] = DnsResponseTaskWrapper( cls, self )
         self.event_loop = loop
+        self.needed = set()     # Managed by DnsResponseTaskWrapper
         return
     
     @property
@@ -1078,37 +1096,39 @@ class DnsResponseQueue(object):
         return self.queue[key]
     
     async def get(self):
-        """Async genfunc returning (gated) write tasks to process."""
+        """Async genfunc returning (gated) write tasks to process.
+        
+        SINGLETON: Only one instance of this coroutine is ever running.
+        """
         done = set()
         pending = set()
+        # Primes the pump for the first time through, after that managed by
+        # DnsResponseTaskWrapper instances.
+        self.needed = DnsPlug.CLASSES.copy()
         while True:
             while len(done):
                 # Could be 2 done...
                 task = done.pop()
                 yield task.result()
             
-            # Something could be done by now. There is at most one item in
-            # the task list.
-            if len(pending):
-                task = pending.pop()
-                if task.done():
-                    yield task.result()
-                else:
-                    pending.add(task)
-                
             # Clear out the UDP Queue
             try:
-                writer = self[UdpPlug].get_nowait()
-                yield writer
+                while True:
+                    writer = self[UdpPlug].get_nowait()
+                    yield writer
                 continue
             except asyncio.QueueEmpty:
                 pass
             
             # Refill the pending tasks
-            needed = DnsPlug.CLASSES - { type(item) for item in pending }
             for item in needed:
                 # What gets added here will be awaited below by asyncio.wait()
-                pending.add( self.event_loop.create_task( self[item].get() ) )
+                pending.add( self.event_loop.create_task( self.wrappers[item].get() ) )
+            needed = set()
+            # This is basically an assertion to make sure we're listening once and only once
+            # to every queue.
+            if len(pending) != len(self.queues):
+                logging.error('DnsResponseQueue pending should be {}, is {}'.format( len(self.queues), len(pending) ))
 
             done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
 

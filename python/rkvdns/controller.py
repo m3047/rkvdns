@@ -305,7 +305,7 @@ class Controller(object):
 
         counts = CountingDict()
         for task in (PYTHON_IS_311 and asyncio.all_tasks() or asyncio.Task.all_tasks()):
-            counts.increment(task._coro.__name__)        
+            counts.inc(task._coro.__name__)        
 
         results = [
             '{}:{}'.format(k,v)
