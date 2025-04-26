@@ -1067,7 +1067,7 @@ class DnsResponseTaskWrapper(object):
         It has a side effect that it adds our plug_class to response_queue.needed.
         """
         result = await self.response_queue[self.plug_class].get()
-        response_queue.needed.add(self.plug_class)
+        self.response_queue.needed.add(self.plug_class)
         return result
 
 class DnsResponseQueue(object):
