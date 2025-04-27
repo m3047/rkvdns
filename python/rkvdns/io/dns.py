@@ -205,7 +205,7 @@ class TcpConnection(object):
         """
         self.watchdog.cancel()
         self.watchdog = None
-        self.timeout = timeout
+        self.timeout = timeout or 0
         return
     
     def update_watchdog_timer(self):
