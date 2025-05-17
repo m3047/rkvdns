@@ -1058,7 +1058,8 @@ class DnsResponseTaskWrapper(object):
     """Wraps the awaited Queue.get() calls."""
     def __init__(self, plug_class, response_queue):
         self.plug_class = plug_class
-        self.response_queue = response_queue
+        self.queue = response_queue.queue[plug_class]
+        self.needed = response_queue.needed
         return
     
     async def get(self):
@@ -1066,8 +1067,8 @@ class DnsResponseTaskWrapper(object):
         
         It has a side effect that it adds our plug_class to response_queue.needed.
         """
-        result = await self.response_queue[self.plug_class].get()
-        self.response_queue.needed.add(self.plug_class)
+        result = await self.queue.get()
+        self.needed.add(self.plug_class)
         return result
 
 class DnsResponseQueue(object):
@@ -1079,11 +1080,11 @@ class DnsResponseQueue(object):
     def __init__(self, queue_depth, loop):
         self.queue = {}
         self.wrappers = {}
+        self.needed = set()     # Managed by DnsResponseTaskWrapper
         for cls in DnsPlug.CLASSES:
             self.queue[cls] = asyncio.Queue(queue_depth)
             self.wrappers[cls] = DnsResponseTaskWrapper( cls, self )
         self.event_loop = loop
-        self.needed = set()     # Managed by DnsResponseTaskWrapper
         return
     
     @property
@@ -1104,7 +1105,7 @@ class DnsResponseQueue(object):
         pending = set()
         # Primes the pump for the first time through, after that managed by
         # DnsResponseTaskWrapper instances.
-        self.needed = DnsPlug.CLASSES.copy()
+        self.needed |= DnsPlug.CLASSES
         while True:
             while len(done):
                 # Could be 2 done...
@@ -1124,7 +1125,7 @@ class DnsResponseQueue(object):
             for item in self.needed:
                 # What gets added here will be awaited below by asyncio.wait()
                 pending.add( self.event_loop.create_task( self.wrappers[item].get() ) )
-            self.needed = set()
+            self.needed.clear()
             # This is basically an assertion to make sure we're listening once and only once
             # to every queue.
             if len(pending) != len(self.queue):
