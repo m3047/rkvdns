@@ -50,6 +50,13 @@ DEBUG_FOLDING = None
 # REDIS QUERY
 #################################################################################
 
+class DictOfLists(dict):
+    def append(self, k, v):
+        if k not in self:
+            self[k] = []
+        self[k].append(v)
+        return
+
 class ShardDecoder(object):
     """Handles conversion and processing of shards for RedisShardsQuery.
     
@@ -97,7 +104,7 @@ class ShardDecoder(object):
         if matched is None:
             return None
         return matched.groups()
-    
+
 class RedisError(Exception):
     pass
 
@@ -307,6 +314,26 @@ class RedisShardsQuery(RedisBaseQuery):
                 continue
             shards.add( sharded )
         return list( shards )
+    
+class RedisShardsGetQuery(RedisBaseQuery):
+    PARAMETERS = ( 'key', 'operand' )
+    MULTIVALUED = True
+    HAS_TTL = False
+    
+    def query(self, conn):
+        sharder = ShardDecoder( self.key )
+        shards = DictOfLists()
+        
+        for k in conn.keys( sharder.key ):
+            sharded = sharder.sharded( k )
+            if sharded is None:
+                continue
+            v = conn.get( k )
+            if v is None:
+                continue
+            shards.append( sharded, v )
+        
+        return [ k + tuple( v ) for k,v in shards.items() ]
 
 class RedisSMembersQuery(RedisBaseQuery):
     PARAMETERS = ( 'key', 'operand' )
@@ -329,6 +356,7 @@ REDIS_QUERY_TYPES = {
         b'lrange'  : RedisLRangeQuery,
         b'scard'   : RedisSCardQuery,
         b'shards'  : RedisShardsQuery,
+        b'shget'   : RedisShardsGetQuery,
         b'smembers': RedisSMembersQuery
     }
 
