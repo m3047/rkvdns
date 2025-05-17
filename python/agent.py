@@ -147,17 +147,35 @@ SHARDS -- Unique Elements of a KEYS Query
 
     foo*.shards.redis.example.com
     
-    Multiple wildcarded parts are returned as lists of strings in a single TXT record:
+    Multiple wildcarded parts of a unique shard are returned as lists of strings in
+    a single TXT record:
     
     foo*bar*.shards.redis.example.com
     
     Using two asterisks suppresses that portion of the shard. The previous command
     returns everything between "foo" and "bar", and also everything from "bar" to
-    the end of the key. The following returns only everything from "bar" to the end
-    of the key:
+    the end of the key. The following returns unique TXT records of only everything
+    from "bar" to the end of the key, even when there are multiple keys within the
+    shard represented by a TXT record:
     
     foo**bar*.shards.redis.example.com
 
+    This operator is not part of the Redis distribution.
+    
+SHGET -- Perform GET Queries across a Domain of Shards
+
+    <pattern>.shget.<zone>
+    
+    Along with the shards (see SHARDS), returns the results of GET queries for the
+    underlying keys, concatenated as multiple strings in a single TXT record.
+    There can be one or more keys queried within each shard, and therefore multiple
+    concatenated values; no ordering is specified for the concatenated values.
+    
+    The (single) TXT record for a unique shard contains strings expressing the following
+    semantics:
+    
+    <shard-part> {<shard-part> {...}} <get-value> {<get-value> {...}}
+    
     This operator is not part of the Redis distribution.
 
 SMEMBERS -- Members of a Set
