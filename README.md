@@ -20,6 +20,22 @@ In a nutshell:
 "10.0.0.224;34.120.208.123;443;flow"
 ```
 
+or more succinctly using `SHARDS` instead of `KEYS`:
+
+```
+# dig '10\.0\.0\.224\;*\;**\;flow.shards.redis.athena.m3047' txt +short | tail -n10
+"140.82.114.22"
+"185.199.111.154"
+"140.82.116.3"
+"140.82.116.6"
+"34.107.243.93"
+"34.149.100.209"
+"140.82.116.4"
+"140.82.113.25"
+"140.82.112.26"
+"34.107.221.82"
+```
+
 * [Here is a detailed explanation.](https://github.com/m3047/rkvdns/blob/main/Examples.md)
 
 ***Use any DNS library. In any language. Async, or sync.*** Honey badger don't care.
@@ -76,9 +92,10 @@ The following operations are supported:
 * `LINDEX`
 * `LRANGE`
 * `SHARDS` see [SHARDS_Command.md](SHARDS_Command.md)
+* `SHGET` see [SHARDS_Command.md](SHARDS_Command.md)
 * `SMEMBERS`
 
-The only operator which is not a _Redis_ operator is `SHARDS`.
+The only operators which are not _Redis_ operators are `SHARDS` and `SHGET`.
 
 ##### "Length-of" Operators
 
