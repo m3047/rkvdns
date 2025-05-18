@@ -90,6 +90,10 @@ class ShardDecoder(object):
 
         return
     
+    def valid(self):
+        """There has to be at least one returnable shard defined."""
+        return b'*' in self.key_
+    
     @property
     def key(self):
         """The actual keyspec passed to Redis."""
@@ -300,33 +304,39 @@ class RedisSCardQuery(RedisBaseQuery):
         """Returns the cardinality of a set."""
         return conn.scard(self.key)
 
-class RedisShardsQuery(RedisBaseQuery):
+class RedisShardedQuery(RedisBaseQuery):
     PARAMETERS = ( 'key', 'operand' )
     MULTIVALUED = True
     HAS_TTL = False
+    
+    def finalize(self):
+        """Sharded queries must contain a valid shard."""
+        self.sharder = ShardDecoder( self.key )
+        if not self.sharder.valid():
+            raise RedisSyntaxError()
+        return self
+    
+class RedisShardsQuery(RedisShardedQuery):
     
     def query(self, conn):
-        sharder = ShardDecoder( self.key )
         shards = set()
         for k in conn.keys( sharder.key ):
-            sharded = sharder.sharded( k )
-            if sharded is None:
+            sharded = self.sharder.sharded( k )
+            if not sharded:
                 continue
             shards.add( sharded )
+            
         return list( shards )
     
-class RedisShardsGetQuery(RedisBaseQuery):
-    PARAMETERS = ( 'key', 'operand' )
-    MULTIVALUED = True
-    HAS_TTL = False
-    
+class RedisShardsGetQuery(RedisShardedQuery):
+
     def query(self, conn):
         sharder = ShardDecoder( self.key )
         shards = DictOfLists()
         
         for k in conn.keys( sharder.key ):
-            sharded = sharder.sharded( k )
-            if sharded is None:
+            sharded = self.sharder.sharded( k )
+            if not sharded:
                 continue
             v = conn.get( k )
             if v is None:
