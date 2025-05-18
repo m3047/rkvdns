@@ -320,7 +320,7 @@ class RedisShardsQuery(RedisShardedQuery):
     
     def query(self, conn):
         shards = set()
-        for k in conn.keys( sharder.key ):
+        for k in conn.keys( self.sharder.key ):
             sharded = self.sharder.sharded( k )
             if not sharded:
                 continue
@@ -331,10 +331,8 @@ class RedisShardsQuery(RedisShardedQuery):
 class RedisShardsGetQuery(RedisShardedQuery):
 
     def query(self, conn):
-        sharder = ShardDecoder( self.key )
-        shards = DictOfLists()
-        
-        for k in conn.keys( sharder.key ):
+        shards = DictOfLists()        
+        for k in conn.keys( self.sharder.key ):
             sharded = self.sharder.sharded( k )
             if not sharded:
                 continue
