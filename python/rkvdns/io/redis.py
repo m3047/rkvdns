@@ -437,7 +437,7 @@ class RedisIO(object):
             logging.error('redis.exceptions.ConnectionError: {}'.format(e))
             exc = e
         except Exception as e:
-            logging.error('{}:\n{}'.format(e, traceback.format_exc()))
+            logging.warning('{}:\n{}'.format(e, traceback.format_exc()))
             exc = e
         query.store_result( result, exc )
 
