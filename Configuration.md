@@ -93,10 +93,10 @@ I recommend you verify this with e.g. _Wireshark_ to familiarize yourself with t
 With _qname minimization_ disabled, you would see three queries from the caching / recursing server to the authoritative servers
 in our hypothetical deployment:
 
-1. A `TXT` query to the _delegating server_ (`10.0.10.120` in our example below) for `foo.get.redis.example.com` which returns ANSWER:0
+1. A `TXT` query to the _delegating server_ (`10.0.10.120` in our example below) for `foo.get.rkvdns.example.com` which returns ANSWER:0
    (NOERROR, but no answer) and an ADDITIONAL `NS` record for the domain `rkvdns.example.com` pointing at `redis.example.com` (a "referral").
 2. An `A` query to the _delegating server_ to find the address for `redis.example.com`.
-3. A `TXT` query for `foo.get.redis.example.com` to `redis.example.com` (`10.0.1.11` in our example below) to get the data from _Redis_.
+3. A `TXT` query for `foo.get.rkvdns.example.com` to `redis.example.com` (`10.0.1.11` in our example below) to get the data from _Redis_.
 
 With _qname minimization_ active, you will see `NS` queries or `A` queries for various things above and below the zone cut. The only queries
 which are the same from the case without _qname minimization_ are the `A` query to find the address for `redis.example.com` and the final `TXT`
