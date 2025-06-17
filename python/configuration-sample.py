@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 # Copyright (c) 2019-2024 by Fred Morris Tacoma WA
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License version 3,
-# as published by the Free Software Foundation.
+#
+# Your configuration based on the contents of file is NOT covered by the
+# AGPL. For the utmost clarity: YOU DO NOT HAVE TO PUBLISH YOUR CONFIGURATION
+# FOR ALL THE WORLD TO SEE.
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
