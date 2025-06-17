@@ -1,7 +1,7 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2024 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2025 by Fred Morris Tacoma WA
 #
-# Your configuration based on the contents of file is NOT covered by the
+# Your configuration based on the contents of this file is NOT covered by the
 # AGPL. For the utmost clarity: YOU DO NOT HAVE TO PUBLISH YOUR CONFIGURATION
 # FOR ALL THE WORLD TO SEE.
 #
