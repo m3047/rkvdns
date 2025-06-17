@@ -110,6 +110,11 @@ the underlying entry:
 
 The only ones of these which don't correspond to a _Redis_ operator are `KLEN` and `KPLEN`.
 
+## AGPL is a Bitch
+
+For the utmost in clarity: **YOUR SPECIFIC CONFIGURATION BASED ON `python/configuration-sample.py` IS EXEMPT FROM
+THE REQUIREMENTS OF THE _AGPL_, YOU DO NOT HAVE TO PUBLISH IT FOR ALL THE WORLD TO SEE.**
+
 -------------------
 
 For paid support: fwm.rkvdns.support.f2u@m3047.net (That address... or alias... is real. It's a [Trualias](https://github.com/m3047/trualias/).)
