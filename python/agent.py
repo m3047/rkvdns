@@ -374,7 +374,7 @@ from rkvdns.statistics import StatisticsFactory
 import rkvdns.io as io
 import rkvdns.controller
 from rkvdns.controller import Controller
-from rkvdns import FOLDERS, prepare_rewrite_rules
+from rkvdns import FOLDERS, prepare_rewrite_rules, InvalidRewriteCharactersError
 
 if PYTHON_IS_311:
     from asyncio import CancelledError
@@ -444,8 +444,6 @@ if RKVDNS_FQDN is not None:
     RKVDNS_FQDN = [ label.lower() for label in RKVDNS_FQDN.strip('.').split('.') ]
 if SOA_CONTACT is not None:
     SOA_CONTACT = [ label.lower() for label in SOA_CONTACT.strip('.').split('.') ]
-    
-REWRITE_RULES, REWRITE_REGEX = prepare_rewrite_rules( REWRITE_RULES )
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
@@ -535,6 +533,12 @@ def main():
         logging.fatal('Unrecognized value for CASE_FOLDING: "{}"'.format(CASE_FOLDING))
         sys.exit(1)
     
+    try:
+        rewrite_rules, rewrite_regex = prepare_rewrite_rules( REWRITE_RULES )
+    except InvalidRewriteCharactersError:
+        logging.fatal('Invalid characters seen in REWRITE_RULES, avoid [].()*?^${}')
+        sys.exit(1)
+
     logging.info('Redis Proxy DNS Agent starting. listening: {}  redis: {}'.format(interface, redis_server))
 
     event_loop = asyncio.new_event_loop()
@@ -567,8 +571,8 @@ def main():
                         debounce            = DEBOUNCE,
                         conformance         = CONFORMANCE,
                         tcp_timeout         = TCP_TIMEOUT,
-                        rewrite_rules       = REWRITE_RULES,
-                        rewrite_regex       = REWRITE_REGEX,
+                        rewrite_rules       = rewrite_rules,
+                        rewrite_regex       = rewrite_regex,
                         # These are for test scaffolding, but have no other impact.
                         redis_server        = redis_server,
                         redis_timeout       = 5,

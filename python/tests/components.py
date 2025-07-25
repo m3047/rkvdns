@@ -71,6 +71,14 @@ class TestRewrite(unittest.TestCase):
         parts = regex.split( b'x-eq-x-dot-x-semi-x-eq-xx' )
         self.assertEqual( parts, [b'x', b'-eq-', b'x', b'-dot-', b'x', b'-semi-', b'x', b'-eq-', b'xx'] )
         return
+    
+    def test_invalid_match_chars(self):
+        """Match expressions can't contain regex metacharacters."""
+        with self.assertRaises( rkvdns.InvalidRewriteCharactersError ):
+            rules, regex = rkvdns.prepare_rewrite_rules(
+                    " -eq-:=,-semi- : ; , -.-: . "
+                )
+        return
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

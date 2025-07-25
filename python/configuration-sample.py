@@ -46,6 +46,8 @@
 # Rewriting: sometimes tools or libraries may behave in opinionated and broken
 # ways, such as disallowing non-hostname characters or refusing to escape the
 # "standard" zonefile comment character ";". Maybe you have other uses.
+# WARNING: DO NOT use regular expression metacharacters in your match strings,
+# e.g. [].()*?^${}
 #REWRITE_RULES = { b'-eq-':b'=', b'-semi-':b';', b'-dot-':b'.' }
 # Implicit encoding.
 #REWRITE_RULES = { '-eq-':'=', '-semi-':';', '-dot-':'.' }

@@ -110,12 +110,17 @@ def compile_rwegex( rules ):
     """
     return re.compile( b'(' + b'|'.join(rules.keys()) + b')' )
 
+class InvalidRewriteCharactersError(ValueError):
+    """Regular expression metacharacters encountered in a match string."""
+    pass
+
 def prepare_rewrite_rules( rewrite_rules ):
     """Prepare the rewrite rules.
     
     Used in processing the configuration for agent.py. Done this way
     (as a function) to facilitate testing.
     """
+    INVALID_CHARS = set( b'[].()*?^${}' )
     if rewrite_rules is not None:
         if   type(rewrite_rules) is str:
             rewrite_rules = compile_rewrite(rewrite_rules)
@@ -131,6 +136,9 @@ def prepare_rewrite_rules( rewrite_rules ):
                     v = v.encode()
                 if fix:
                     rewrite_rules[k] = v
+        match_chars = set( b''.join(rewrite_rules.keys()))
+        if match_chars & INVALID_CHARS:
+            raise InvalidRewriteCharactersError()
         rewrite_regex = compile_rwegex( rewrite_rules )
     else:
         rewrite_regex = None
