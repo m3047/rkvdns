@@ -308,6 +308,33 @@ CASE_FOLDING allows you to control what happens. There are four options:
   escape        The first three octets of the key or pattern define escapes
                 which apply to the following octet when they occur.
 
+Rewriting
+---------
+
+Sometimes tools or libraries may behave in opinionated and broken ways, such as
+disallowing non-hostname characters or refusing to escape the "standard" zonefile
+comment character ";". Maybe you have other uses. REWRITE_RULES allows you to
+address these issues.
+
+Rewrites are specified as regular expressions specified as binary strings.
+
+NOTE: You MUST use BINARY "b" strings, not plain or "r" strings.
+
+Rewrites are specified as a dictionary containing the match expressions and the
+replacement values. There is no implied ordering of expressions, and substitutions
+are not performed iteratively (a substitution is not subjected to further
+substitutions).
+
+You can come up with a scheme using encode() to obviate the need to type "b"
+repeatedly, but be aware that what gets written to the binary string may not be 1:1
+with what you supplied as the input string! We supply the function
+rkvdns.compile_rewrite() as one simplistic way to do this.
+
+Rewrites are applied only to query strings. Rewrites are applied after other
+preprocessing such as case folding.
+
+Default is no rewriting.
+
 Debouncing and Marshalling
 --------------------------
 
@@ -347,7 +374,7 @@ from rkvdns.statistics import StatisticsFactory
 import rkvdns.io as io
 import rkvdns.controller
 from rkvdns.controller import Controller
-from rkvdns import FOLDERS
+from rkvdns import FOLDERS, prepare_rewrite_rules
 
 if PYTHON_IS_311:
     from asyncio import CancelledError
@@ -373,6 +400,7 @@ NXDOMAIN_FOR_SERVFAIL = False
     
 ALL_QUERIES_AS_TXT = False
 CASE_FOLDING = None
+REWRITE_RULES = None
 
 MAX_TTL = 3600
 DEFAULT_TTL = 30
@@ -416,6 +444,8 @@ if RKVDNS_FQDN is not None:
     RKVDNS_FQDN = [ label.lower() for label in RKVDNS_FQDN.strip('.').split('.') ]
 if SOA_CONTACT is not None:
     SOA_CONTACT = [ label.lower() for label in SOA_CONTACT.strip('.').split('.') ]
+    
+REWRITE_RULES, REWRITE_REGEX = prepare_rewrite_rules( REWRITE_RULES )
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
@@ -537,6 +567,8 @@ def main():
                         debounce            = DEBOUNCE,
                         conformance         = CONFORMANCE,
                         tcp_timeout         = TCP_TIMEOUT,
+                        rewrite_rules       = REWRITE_RULES,
+                        rewrite_regex       = REWRITE_REGEX,
                         # These are for test scaffolding, but have no other impact.
                         redis_server        = redis_server,
                         redis_timeout       = 5,

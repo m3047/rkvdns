@@ -132,7 +132,7 @@ class RedisBaseQuery(object):
     INTEGER_VALUE = re.compile(b'-?\d+')
     MAX_PARAMS = 3  # This should not be changed when subclassed!
     
-    def __init__(self, query, folder):
+    def __init__(self, query, folder, rewrite_rules, rewrite_regex):
         if len(self.PARAMETERS) != len(query):
             raise RedisParameterError()
         for param, value in zip(self.PARAMETERS, query):
@@ -145,15 +145,30 @@ class RedisBaseQuery(object):
             self.parameter_list.insert(0, None)
         # The parameter to the left of the operand is always a key or pattern.
         self.folder = folder
+        self.rewrite_rules = rewrite_rules
+        self.rewrite_regex = rewrite_regex
         self.fold(-2)
         self.validate()
         return
     
     def fold(self, i):
+        """Applies folding and rewriting rules."""
+
         attr = self.PARAMETERS[i]
+
         if DEBUG_FOLDING:
             DEBUG_FOLDING('folding: {}\nbefore: {}\nafter: {}'.format(attr, getattr(self, attr), self.folder(getattr(self, attr))))
+
         setattr(self, attr, self.folder(getattr(self, attr)) )
+
+        if self.rewrite_rules is None:
+            return
+        parts = self.rewrite_regex.split(getattr(self, attr))
+        for i in range(len(parts)):
+            if parts[i] in self.rewrite_rules:
+                parts[i] = self.rewrite_rules[parts[i]]
+        setattr(self, attr, b''.join(parts))
+        
         return
     
     def validate(self):

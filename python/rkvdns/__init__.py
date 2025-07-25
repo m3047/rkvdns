@@ -13,6 +13,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sysconfig
+import re
 
 PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
 
@@ -88,3 +89,51 @@ FOLDERS = {
         'upper':  lambda x:x.upper(),
         'escape': lambda x:escape_folder(x)
     }
+
+def compile_rewrite( rules ):
+    """Takes an ordinary string and converts it to a bytecode dictionary.
+    
+    ...which is the format used by the REWRITE configuration parameter.
+    
+    CAUTION: If you stray from the ASCII characters you may be surprised by the
+    output produced!
+    """
+    return dict(
+            ( kv.encode() for kv in re.split(' *: *', rule) ) for rule in
+            re.split(' *, *', rules.strip())
+        )
+
+def compile_rwegex( rules ):
+    """Creates the compiled regex encapsulating the rewrite rules.
+    
+    This is run on the result of compile_rewrite().
+    """
+    return re.compile( b'(' + b'|'.join(rules.keys()) + b')' )
+
+def prepare_rewrite_rules( rewrite_rules ):
+    """Prepare the rewrite rules.
+    
+    Used in processing the configuration for agent.py. Done this way
+    (as a function) to facilitate testing.
+    """
+    if rewrite_rules is not None:
+        if   type(rewrite_rules) is str:
+            rewrite_rules = compile_rewrite(rewrite_rules)
+        else:
+            for k,v in rewrite_rules.copy().items():
+                fix = False
+                if type(k) is str:
+                    fix = True
+                    del rewrite_rules[k]
+                    k = k.encode()
+                if type(v) is str:
+                    fix = True
+                    v = v.encode()
+                if fix:
+                    rewrite_rules[k] = v
+        rewrite_regex = compile_rwegex( rewrite_rules )
+    else:
+        rewrite_regex = None
+    
+    return rewrite_rules, rewrite_regex
+

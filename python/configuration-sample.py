@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 # Copyright (c) 2019-2025 by Fred Morris Tacoma WA
 #
-# Your configuration based on the contents of this file is NOT covered by the
-# AGPL. For the utmost clarity: YOU DO NOT HAVE TO PUBLISH YOUR CONFIGURATION
-# FOR ALL THE WORLD TO SEE.
+# Your configuration based on the unmodified contents of this file is NOT
+# covered by the AGPL. For the utmost clarity: YOU DO NOT HAVE TO PUBLISH YOUR
+# CONFIGURATION FOR ALL THE WORLD TO SEE.
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -42,6 +42,18 @@
 #ALL_QUERIES_AS_TXT = False
 # One of None / lower / upper / escape. See the documentation.
 #CASE_FOLDING = None
+
+# Rewriting: sometimes tools or libraries may behave in opinionated and broken
+# ways, such as disallowing non-hostname characters or refusing to escape the
+# "standard" zonefile comment character ";". Maybe you have other uses.
+#REWRITE_RULES = { b'-eq-':b'=', b'-semi-':b';', b'-dot-':b'.' }
+# Implicit encoding.
+#REWRITE_RULES = { '-eq-':'=', '-semi-':';', '-dot-':'.' }
+# Implicit declaration and encoding with rkvdns.compile_rewrite()
+#REWRITE_RULES = '-eq- : =, -semi- : ;, -dot- : .'
+#
+# Default is no rewriting.
+# REWRITE_RULES = None
 
 # Maximum allowable TTL
 #MAX_TTL = 3600

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2024 Fred Morris Tacoma WA USA
+# Copyright (c) 2022-2025 Fred Morris Tacoma WA USA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -74,6 +74,8 @@ DEFAULT_CONFIG = dict(
             
         all_queries_as_txt = 'False',
         case_folding = 'None',
+        rewrite_rules = 'None',
+        rewrite_regex = 'None',
 
         max_ttl = 3600,
         default_ttl = 30,
@@ -91,7 +93,7 @@ class WithRedis(unittest.TestCase):
     def setUp(self):
         if self.REDIS:
             self.redis = redis.client.Redis( config.REDIS_SERVER, decode_responses=True,
-                                            socket_connect_timeout=5
+                                             socket_connect_timeout=5
                                         )
 
         self.zone = config.ZONE.rstrip() + '.'
@@ -198,6 +200,18 @@ class TestOptions(WithRedis):
         key = config.CONTROL_KEY + '_foLD_eScApe'
         self.redis.set(key,'1.3.3.7')
         key = '\.+-' + config.CONTROL_KEY + '\._-F-O\.LD_\.e+s-c+ape'
+        resp = self.resolver.query(key + '.get.' + self.zone, 'A')
+        self.assertEqual(resp.response.answer[0][0].to_text(), '1.3.3.7')
+        return
+
+    def test_rewrite(self):
+        self.set_config(
+                rewrite_rules = "{ b'=semi':b';', b'=dot':b'.' }",
+                rewrite_regex = "re.compile(b'(=semi|=dot)')"
+            )
+        key = config.CONTROL_KEY + '_rewrite;'
+        self.redis.set(key,'1.3.3.7')
+        key = key.replace(';','=semi')
         resp = self.resolver.query(key + '.get.' + self.zone, 'A')
         self.assertEqual(resp.response.answer[0][0].to_text(), '1.3.3.7')
         return

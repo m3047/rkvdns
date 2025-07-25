@@ -522,7 +522,9 @@ class Controller(object):
                 
             # Ok, looks maybe good.
             try:
-                query = io.RedisQuery(redis_labels, req.response_config.folder).finalize()
+                query = io.RedisQuery(redis_labels, req.response_config.folder,
+                                      req.response_config.rewrite_rules, req.response_config.rewrite_regex
+                                     ).finalize()
             except io.RedisError as e:
                 await self.response_queue.write( self.parameter_error(req, e) )
                 if timer is not None:
