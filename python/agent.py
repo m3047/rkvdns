@@ -374,7 +374,7 @@ from rkvdns.statistics import StatisticsFactory
 import rkvdns.io as io
 import rkvdns.controller
 from rkvdns.controller import Controller
-from rkvdns import FOLDERS, prepare_rewrite_rules, InvalidRewriteCharactersError
+from rkvdns import FOLDERS, prepare_rewrite_rules, InvalidRewriteCharactersError, INVALID_REWRITE_CHARS
 
 if PYTHON_IS_311:
     from asyncio import CancelledError
@@ -536,7 +536,9 @@ def main():
     try:
         rewrite_rules, rewrite_regex = prepare_rewrite_rules( REWRITE_RULES )
     except InvalidRewriteCharactersError:
-        logging.fatal('Invalid characters seen in REWRITE_RULES, avoid [].()*?^${}')
+        logging.fatal('Invalid characters seen in REWRITE_RULES, avoid {}'.format(
+                        ''.join( chr(c) for c in INVALID_REWRITE_CHARS )
+                     )                                                           )
         sys.exit(1)
 
     logging.info('Redis Proxy DNS Agent starting. listening: {}  redis: {}'.format(interface, redis_server))
