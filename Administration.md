@@ -186,6 +186,41 @@ In the second RPZ, create the default deny rule:
 *.PROXY.REDIS.EXAMPLE.COM  IN CNAME .
 ```
 
+#### Alternate scheme for allowing specific queries based on CNAMEs
+
+There is another way to allow specific queries which relies on creating `CNAME` records for all of the
+allowed queries.
+
+As above, the second RPZ contains the same default deny rule:
+
+```
+*.PROXY.REDIS.EXAMPLE.COM  IN CNAME .
+```
+
+But in the first RPZ we create an allow rule for a specific (sub) domain which is wildcarded like the default deny rule:
+
+```
+*.EXT.REDIS.EXAMPLE.COM IN CNAME  rpz-passthru.
+```
+
+Now we create a `CNAME` under `EXT.REDIS.EXAMPLE.COM` which defines the specific query. THIS GOES IN THE REGULAR
+ZONE FILE FOR e.g. `EXT.REDIS.EXAMPLE.COM` (which might not be delegated, the zone might be `REDIS.EXAMPLE.COM`
+or even possibly `EXAMPLE.COM`):
+
+```
+FOO.EXT.REDIS.EXAMPLE.COM.  IN CNAME  foo.get.proxy.redis.example.com.
+```
+
+As a result:
+
+* `foo.get.proxy.redis.example.com` cannot be queried directly (due to the default deny rule).
+* It can be queried via the `CNAME` under `ext.redis.example.net`
+
+At an organizational level this shifts control over what is accessible from the administrator of the access control RPZ, to the administrator of the
+actual `REDIS.EXAMPLE.COM` / `EXAMPLE.COM` operational zone.
+
+As many different CNAMEs can be created as operational need dictates.
+
 ## Encryption
 
 Plain old DNS is fast, but it's not encrypted.
