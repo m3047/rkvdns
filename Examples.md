@@ -253,10 +253,23 @@ To address this, we support _case folding_. The following folding modes are supp
 * `'upper'`: force upper case
 * `'escape'`: use per-character folding with escapes
 
+For additional documentation refer to the pydoc for `agent` and `rkvdns.escape_folder`.
+
 In the first example, my keys all look like `<address>;<address>;<port>;flow`. `flow` is an actual lower case literal.
 (There are some others but this is the one we're interested in. Conveniently all of them are lower case!)
     
 I have the service configured with `CASE_FOLDING = 'lower'`.
+
+## Rewriting
+
+Sometimes tools or libraries may behave in opinionated and broken ways, such as disallowing non-hostname
+characters or refusing to escape the "standard" zonefile comment character `;`. You can specify values to
+be substituted when particular match strings are seen, but match strings containing regular expression
+metacharacters are not allowed. `configuration-sample.py` has additional examples.
+
+```
+REWRITE_RULES = '-eq- : =, -semi- : ;, -dot- : .'
+```
 
 ## Addresses
 
