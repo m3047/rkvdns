@@ -10,6 +10,8 @@ very same, wildcarded, query string you'd use with `KEYS`:
 
     <pattern>.shards.<zone>
 
+The _Totalizers_ example in `rkvdns_examples` [has been updated to use `SHGET` as an option](https://github.com/m3047/rkvdns_examples/tree/main/totalizers#using-the-shget-operator).
+
 ### Patterns and wildcards
 
 Compared to `KEYS`, only asterisk ("*") wildcarding is supported, but this comes in two flavors.
