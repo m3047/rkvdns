@@ -1068,6 +1068,7 @@ class DnsResponseTaskWrapper(object):
         It has a side effect that it adds our plug_class to response_queue.needed.
         """
         result = await self.queue.get()
+        self.queue.task_done()
         self.needed.add(self.plug_class)
         return result
 
@@ -1081,6 +1082,9 @@ class DnsResponseQueue(object):
         self.queue = {}
         self.wrappers = {}
         self.needed = set()     # Managed by DnsResponseTaskWrapper
+        # NOTE regarding task_done(): This is advisory, in the sense that it is only utilized by
+        # join(), which we do not use. To drive the point home, qsize() reads the length of the internal
+        # deque, it does not attempt to resolve the accounting required by join() / task_done().
         for cls in DnsPlug.CLASSES:
             self.queue[cls] = asyncio.Queue(queue_depth)
             self.wrappers[cls] = DnsResponseTaskWrapper( cls, self )
@@ -1116,6 +1120,7 @@ class DnsResponseQueue(object):
             try:
                 while True:
                     writer = self[UdpPlug].get_nowait()
+                    self[UdpPlug].task_done()
                     yield writer
                 continue
             except asyncio.QueueEmpty:
