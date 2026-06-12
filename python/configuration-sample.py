@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2025 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2026 by Fred Morris Tacoma WA
 #
 # Your configuration based on the unmodified contents of this file is NOT
 # covered by the AGPL. For the utmost clarity: YOU DO NOT HAVE TO PUBLISH YOUR
@@ -26,6 +26,8 @@
 #MAX_TCP_PAYLOAD = 60000
 # Maximum individual value size (architectural limit)
 #MAX_VALUE_PAYLOAD = 255
+# Maximum number of values (rdata records)
+#MAX_VALUES = 200
 # If true, partial TCP payloads are returned with NOERROR instead of SERVFAIL
 #RETURN_PARTIAL_TCP = False
 # If true, individual values are truncated rather than omitted if too large.

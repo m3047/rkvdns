@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2024 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2026 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -16,7 +16,7 @@
 PRINT_COROUTINE_ENTRY_EXIT = None
 
 from .dns import DnsResponseQueue, DnsIO, TcpPlug, UdpPlug, Request
-from .redis import RedisIO, RedisQuery, RedisError, RedisParameterError, REDIS_QUERY_TYPES
+from .redis import RedisIO, RedisQuery, RedisError, RedisParameterError, REDIS_QUERY_TYPES, TooManyValuesError
 
 #################################################################################
 # CONFIGS USED TO CONSTRUCT RESPONSES

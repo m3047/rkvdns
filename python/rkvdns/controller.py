@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2025 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2026 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -46,19 +46,44 @@ class RequestList(object):
         self.answer = None
         self.udp_limit = None
         self.tc = False
+        self.rcode = None
         self.precalc_ = None
         return
     
+    @property
+    def done(self):
+        """Does this represent a completed query / request?
+        
+        ...as opposed to one for which a Redis query has been issued and is pending.
+        
+        This encompasses both successful queries as well as error / exception
+        conditions.
+        """
+        return self.rcode is not None or self.answer is not None
+    
+    @property
+    def exception(self):
+        """Was an error condition triggered?"""
+        return self.rcode is not None
+        
     def add_request(self, req):
         self.requests.append(req)
         return
     
     def add_answer(self, req, udp_limit=None, tc=False):
+        """Handle the case when there is an answer.
+        
+        See dns.Request.to_wire(), it's where the answer is generated.
+        """
         self.answer = req.response.answer
         self.udp_limit = self.tcp_or_udp == self.UDP and udp_limit or None
         self.tc = tc
         return
     
+    def add_exception(self, req):
+        self.rcode = req.response.rcode()
+        return
+
     def payload_size_precalc(self, req):
         if self.precalc_ is None:
             results = self.query.results()
@@ -101,8 +126,6 @@ class DictOfRequests(dict):
         """Add a request to the appropriate list of requests.
         
         Each distinct query has a separately maintained list.
-        
-        Returns the RequestList.
         """
         if k not in self:
             if query is None:
@@ -195,7 +218,7 @@ class Debouncer(object):
                     )
         
         # Query is pending.
-        if request_list.answer is None:
+        if not request_list.done:
             for bucket in self.buckets:
                 if k in bucket:
                     ignore = bucket.add_request(k, req)
@@ -428,15 +451,15 @@ class Controller(object):
         debouncer = Debouncer( self.redis_stats, debounce=debounce )
         while True:
             req = await self.pending_queue.get()
-            
+            config = req.response_config
             #
             # +++ Test shimming.
             #
             # This is automated, see end_to_end.WithRedis.set_config() and io.Request.patch_for_test()
             if self.control_key:
-
-                if req.response_config.incrementing:
-                    incrementing_encoded = req.response_config.incrementing.encode()
+                
+                if config.incrementing:
+                    incrementing_encoded = config.incrementing.encode()
                     if (  'incrementing' in self.redis_io.test_shims
                       and self.redis_io.test_shims['incrementing']['k'] != incrementing_encoded
                        ):
@@ -449,11 +472,11 @@ class Controller(object):
                 elif 'incrementing' in self.redis_io.test_shims:
                     del self.redis_io.test_shims['incrementing']
 
-                if req.response_config.pending_delay_ms:
-                    await asyncio.sleep(req.response_config.pending_delay_ms / 1000)
+                if config.pending_delay_ms:
+                    await asyncio.sleep(config.pending_delay_ms / 1000)
                     
-                debouncer.debounce = req.response_config.debounce
-                self.conformance_level = req.response_config.conformance
+                debouncer.debounce = config.debounce
+                self.conformance_level = config.conformance
                 
             # --- Test shimming.
             #
@@ -497,7 +520,7 @@ class Controller(object):
             # In other words the best correct answer might be NXDOMAIN (does not exist) but all
             # we can assert with confidence is that we know we won't have an answer for this
             # qtype.
-            if not req.response_config.all_queries_as_txt and req.qtype not in self.ALLOWED_QUERY_TYPES:
+            if not config.all_queries_as_txt and req.qtype not in self.ALLOWED_QUERY_TYPES:
                 await self.response_queue.write( self.qtype_not_allowed(req, redis_labels) )
                 if timer is not None:
                     timer.stop()
@@ -522,8 +545,8 @@ class Controller(object):
                 
             # Ok, looks maybe good.
             try:
-                query = io.RedisQuery(redis_labels, req.response_config.folder,
-                                      req.response_config.rewrite_rules, req.response_config.rewrite_regex
+                query = io.RedisQuery(redis_labels, config.folder,
+                                      config.rewrite_rules, config.rewrite_regex, config.max_values
                                      ).finalize()
             except io.RedisError as e:
                 await self.response_queue.write( self.parameter_error(req, e) )
@@ -568,18 +591,18 @@ class Controller(object):
                 timer = None
 
             if   query.exception is not None:
-                await self.response_queue.write( self.query_failure(req, query.exception) )
+                await self.response_queue.write( self.query_failure(req, query.exception), tied_requests )
             elif query.result is None:
-                await self.response_queue.write( self.nxdomain(req) )
+                await self.response_queue.write( self.nxdomain(req), tied_requests )
             else:
                 if not tied_requests.payload_size_precalc( req ):
                     logging.warning('Impossibly large payload for: {} from: {}'.format(
                         req.request.question[0].name.to_text(), req.plug.query_address
                     ))
                     if req.response_config.nxdomain_for_servfail:
-                        await self.response_queue.write( req.nxdomain( 'Impossibly large payload.' ) )
+                        await self.response_queue.write( req.nxdomain( 'Impossibly large payload.' ), tied_requests )
                     else:
-                        await self.response_queue.write( req.servfail( 'Impossibly large payload.' ) )
+                        await self.response_queue.write( req.servfail( 'Impossibly large payload.' ), tied_requests )
                 else:
                     # Fabricate rrsets. This is actually deferred until to_wire() is called after the
                     # request is dequeued in order to be written.

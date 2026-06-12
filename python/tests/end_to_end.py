@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2025 Fred Morris Tacoma WA USA
+# Copyright (c) 2022-2026 Fred Morris Tacoma WA USA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -28,6 +28,7 @@ it causes the service to read the CONTROL_KEY hash for every request.
 
 import sys
 import unittest
+from collections import namedtuple
 import redis
 import math
 from dns.resolver import Resolver
@@ -214,6 +215,85 @@ class TestOptions(WithRedis):
         key = key.replace(';','=semi')
         resp = self.resolver.query(key + '.get.' + self.zone, 'A')
         self.assertEqual(resp.response.answer[0][0].to_text(), '1.3.3.7')
+        return
+    
+LVOp = namedtuple('LVOp', ['name', 'set_redis', 'dns_key'])
+
+class TestMaxValues(WithRedis):
+    """Tests that list-valued operators obey MAX_VALUES."""
+    
+    RESOLVER = False
+    
+    MIN_TEST = 10
+    GENERATED = 12
+    MAX_TEST = 15
+
+    LIST_VALUED_OPS = (
+        LVOp(   'hkeys',
+                lambda redis,k,i: redis.hset(k, 'foo{:02d}'.format(i).encode(), int(random()*1000)),
+                lambda k: k
+        ),
+        LVOp(   'keys',
+                lambda redis,k,i: redis.set(k + '_{:02d}'.format(i), int(random()*1000)),
+                lambda k: k+'*'
+        ),
+        LVOp(   'lrange',
+                lambda redis,k,i: redis.lpush(k, 'foo{:02d}'.format(i).encode()),
+                lambda k: ':.'+k
+        ),
+        LVOp(   'shards',
+                lambda redis,k,i: redis.set(k + '_{:02d}'.format(i), int(random()*1000)),
+                lambda k: k+'*'
+        ),
+        LVOp(   'shget',
+                lambda redis,k,i: redis.set(k + '_{:02d}'.format(i), int(random()*1000)),
+                lambda k: k+'*'
+        ),
+        LVOp(   'smembers',
+                lambda redis,k,i: redis.sadd(k, 'foo{:02d}'.format(i).encode()),
+                lambda k: k
+        )
+    )
+
+    def test_max_values_fail(self):
+        # Generate test values for all cases.
+        for operator in self.LIST_VALUED_OPS:
+            key = config.CONTROL_KEY + '_max_value_min_' + operator.name
+            for i in range( self.GENERATED ):
+                operator.set_redis(self.redis, key, i)
+
+        # Query all cases for min values (each should fail).
+        self.set_config(max_values=self.MIN_TEST)
+        for operator in self.LIST_VALUED_OPS:
+            key = config.CONTROL_KEY + '_max_value_min_' + operator.name
+            query = dns.message.make_query( operator.dns_key(key) + '.' + operator.name + '.' + self.zone, 'TXT',
+                                            use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                        )
+            resp = dns.query.udp(query, config.INTERFACE)
+            self.assertEqual( resp.rcode(), rcode.SERVFAIL, 'Opcode {}, expected SERVFAIL.'.format(operator.name) )
+            
+        return
+    
+    def test_max_values_ok(self):
+        # Generate test values for all cases.
+        for operator in self.LIST_VALUED_OPS:
+            key = config.CONTROL_KEY + '_max_value_max_' + operator.name
+            for i in range( self.GENERATED ):
+                operator.set_redis(self.redis, key, i)
+
+        # Query all cases for max values (all should pass).
+        self.set_config(max_values=self.MAX_TEST)
+        for operator in self.LIST_VALUED_OPS:
+            key = config.CONTROL_KEY + '_max_value_max_' + operator.name
+            query = dns.message.make_query( operator.dns_key(key) + '.' + operator.name + '.' + self.zone, 'TXT',
+                                            use_edns=True, payload=DEFAULT_CONFIG['max_udp_payload']
+                                        )
+            resp = dns.query.udp(query, config.INTERFACE)
+            self.assertEqual( resp.rcode(), rcode.NOERROR, 'Opcode {}, expected NOERROR'.format(operator.name) )
+            self.assertEqual( len(resp.answer[0]), self.GENERATED,
+                              'Opcode {}, expected {}'.format( operator.name, self.GENERATED )
+                            )
+
         return
 
 class TestQueries(WithRedis):

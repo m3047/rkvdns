@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2025 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2026 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -124,6 +124,10 @@ class RedisSyntaxError(RedisError):
     """Something is wrong with one of the parameters."""
     pass
 
+class TooManyValuesError(Exception):
+    """When the MAX_VALUES setting is exceeded."""
+    pass
+
 class RedisBaseQuery(object):
     """All redis queries are subclasses of this."""
     
@@ -132,7 +136,7 @@ class RedisBaseQuery(object):
     INTEGER_VALUE = re.compile(b'-?\d+')
     MAX_PARAMS = 3  # This should not be changed when subclassed!
     
-    def __init__(self, query, folder, rewrite_rules, rewrite_regex):
+    def __init__(self, query, folder, rewrite_rules, rewrite_regex, max_values):
         if len(self.PARAMETERS) != len(query):
             raise RedisParameterError()
         for param, value in zip(self.PARAMETERS, query):
@@ -147,6 +151,7 @@ class RedisBaseQuery(object):
         self.folder = folder
         self.rewrite_rules = rewrite_rules
         self.rewrite_regex = rewrite_regex
+        self.max_values = max_values
         self.fold(-2)
         self.validate()
         return
@@ -231,10 +236,14 @@ class RedisHGetQuery(RedisBaseQuery):
 class RedisHKeysQuery(RedisBaseQuery):
     PARAMETERS = ( 'key', 'operand' )
     MULTIVALUED = True
+    HAS_TTL = False
 
     def query(self, conn):
         """Returns a list; may be empty."""
-        return conn.hkeys(self.key)
+        values = conn.hkeys(self.key)
+        if len(values) > self.max_values:
+            raise TooManyValuesError('{} exceeds MAX_VALUES of {}'.format( len(values), self.max_values ))
+        return values
 
 class RedisHLenQuery(RedisBaseQuery):
     PARAMETERS = ( 'key', 'operand' )
@@ -250,7 +259,10 @@ class RedisKeysQuery(RedisBaseQuery):
 
     def query(self, conn):
         """Returns a list; may be empty."""
-        return conn.keys(self.pattern)
+        values = conn.keys(self.pattern)
+        if len(values) > self.max_values:
+            raise TooManyValuesError('{} exceeds MAX_VALUES of {}'.format( len(values), self.max_values ))
+        return values
         
 class RedisLIndexQuery(RedisBaseQuery):
     PARAMETERS = ( 'index', 'key', 'operand' )
@@ -310,7 +322,10 @@ class RedisLRangeQuery(RedisBaseQuery):
             irange[0] = 0
         if not irange[1]:
             irange[1] = -1
-        return conn.lrange(self.key, *[ int(bounds) for bounds in irange ] )
+        values = conn.lrange(self.key, *[ int(bounds) for bounds in irange ] )
+        if len(values) > self.max_values:
+            raise TooManyValuesError('{} exceeds MAX_VALUES of {}'.format( len(values), self.max_values ))
+        return values
 
 class RedisSCardQuery(RedisBaseQuery):
     PARAMETERS = ( 'key', 'operand' )
@@ -331,11 +346,17 @@ class RedisShardedQuery(RedisBaseQuery):
             raise RedisSyntaxError()
         return self
     
+    def sharded_keys(self, conn ):
+        keys = conn.keys( self.sharder.key )
+        if len(keys) > self.max_values:
+            raise TooManyValuesError('{} exceeds MAX_VALUES of {}'.format( len(keys), self.max_values ))
+        return keys
+    
 class RedisShardsQuery(RedisShardedQuery):
     
     def query(self, conn):
         shards = set()
-        for k in conn.keys( self.sharder.key ):
+        for k in self.sharded_keys( conn ):
             sharded = self.sharder.sharded( k )
             if not sharded:
                 continue
@@ -347,7 +368,7 @@ class RedisShardsGetQuery(RedisShardedQuery):
 
     def query(self, conn):
         shards = DictOfLists()        
-        for k in conn.keys( self.sharder.key ):
+        for k in self.sharded_keys( conn ):
             sharded = self.sharder.sharded( k )
             if not sharded:
                 continue
@@ -364,7 +385,10 @@ class RedisSMembersQuery(RedisBaseQuery):
 
     def query(self, conn):
         """Returns a list; may be empty."""
-        return list(conn.smembers(self.key))
+        values = list(conn.smembers(self.key))
+        if len(values) > self.max_values:
+            raise TooManyValuesError('{} exceeds MAX_VALUES of {}'.format( len(values), self.max_values ))
+        return values
         
 REDIS_QUERY_TYPES = {
         b'get'     : RedisGetQuery,
@@ -434,6 +458,7 @@ class RedisIO(object):
             
         try:
             exc = result = None
+            query.ttl = None
             #
             # NOTE: If a key value is specified as the value of the "incrementing" override
             #       in a test, that value can be incremented and returned here as the (apparent)
@@ -444,7 +469,6 @@ class RedisIO(object):
                ):
                 self.test_shims['incrementing']['v'] += 1
                 result = self.test_shims['incrementing']['v']
-                query.ttl = None
             else:
                 result = query.query(self.redis)
                 query.resolve_ttl(self.redis)

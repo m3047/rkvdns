@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2025 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2026 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -284,6 +284,12 @@ This limit is a consideration for all operations. If this hard limit is exceeded
 then SERVFAIL will be returned and an error will be logged. You can change this
 behavior by setting RETURN_PARTIAL_VALUE=True and a warning will be logged.
 
+THE NUMBER OF RECORDS (RVALUES): The practical limit is considerably less than
+the theoretical limit. Many recursor / resolver implementations in the field may
+choke on hundreds of records. MAX_VALUES defaults to 200. Resilience: this also
+protects the agent from consuming resources attempting to process impossibly
+large (because they will break something downstream) record sets.
+
 TTLs
 ----
 
@@ -394,6 +400,7 @@ MAX_PENDING = 50
 MAX_UDP_PAYLOAD = 1200
 MAX_TCP_PAYLOAD = 60000
 MAX_VALUE_PAYLOAD = 255
+MAX_VALUES = 200
 RETURN_PARTIAL_TCP = False
 RETURN_PARTIAL_VALUE = False
 NXDOMAIN_FOR_SERVFAIL = False
@@ -529,6 +536,10 @@ def resolve_args():
 def main():
     interface, redis_server = resolve_args()
     
+    if MAX_VALUES < 10:
+        logging.fatal('MAX_VALUES must be at least 10')
+        sys.exit(1)
+        
     if CASE_FOLDING not in FOLDERS:
         logging.fatal('Unrecognized value for CASE_FOLDING: "{}"'.format(CASE_FOLDING))
         sys.exit(1)
@@ -557,6 +568,7 @@ def main():
                         max_udp_payload     = MAX_UDP_PAYLOAD,
                         max_tcp_payload     = MAX_TCP_PAYLOAD,
                         max_value_payload   = MAX_VALUE_PAYLOAD,
+                        max_values          = MAX_VALUES,
                         return_partial_tcp  = RETURN_PARTIAL_TCP,
                         return_partial_value= RETURN_PARTIAL_VALUE,
                         nxdomain_for_servfail=NXDOMAIN_FOR_SERVFAIL,

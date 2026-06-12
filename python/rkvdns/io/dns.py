@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022-2025 by Fred Morris Tacoma WA
+# Copyright (c) 2022-2026 by Fred Morris Tacoma WA
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License version 3,
 # as published by the Free Software Foundation.
@@ -292,6 +292,7 @@ class Request(object):
         Call the UdpIO and TcpIO constructors.
         """
         self.plug = plug
+        self.is_error_response = False
         # self.udp_limit -- edns_fixup()
         # self.response_config -- with_config()
         
@@ -493,6 +494,7 @@ class Request(object):
         else:
             response.set_rcode(code)
         self.edns_fixup()
+        self.is_error_response = True
         return
 
     def formerr(self, text=None):
@@ -820,18 +822,21 @@ class Request(object):
     def to_wire(self, tied_requests):
         """Converts a response to wire format and returns it."""
 
-        if tied_requests is None:
+        if   tied_requests is None or tied_requests.exception or self.is_error_response:
+            if tied_requests and not tied_requests.done:
+                tied_requests.add_exception( self )
             wire = self.response.to_wire()
             if isinstance(self.plug, TcpPlug):
                 return len(wire).to_bytes(2, byteorder='big') + wire
             else:
                 return wire
         #
-        # From this point forward we're dealing with a successful redis query with a legitimate
-        # answer payload.
+        # From this point forward we're dealing with a redis query having been performed.
         #
-        if tied_requests.answer is None:
-            # Doesn't matter if udp_limit is passed here, it is ignored if not UDP.
+        if not tied_requests.done:
+            # The happy path. We're the first one through and so we save off a reference to the
+            # answer for later use. Doesn't matter if udp_limit is passed here, it is ignored
+            # if not UDP.
             tied_requests.add_answer( self.answer_from_query( tied_requests.query ), self.udp_limit )
         else:
             self.response.answer = tied_requests.answer
