@@ -346,21 +346,17 @@ class RedisShardedQuery(RedisBaseQuery):
             raise RedisSyntaxError()
         return self
     
-    def sharded_keys(self, conn ):
-        keys = conn.keys( self.sharder.key )
-        if len(keys) > self.max_values:
-            raise TooManyValuesError('{} exceeds MAX_VALUES of {}'.format( len(keys), self.max_values ))
-        return keys
-    
 class RedisShardsQuery(RedisShardedQuery):
     
     def query(self, conn):
         shards = set()
-        for k in self.sharded_keys( conn ):
+        for k in conn.keys( self.sharder.key ):
             sharded = self.sharder.sharded( k )
             if not sharded:
                 continue
             shards.add( sharded )
+            if len(shards) > self.max_values:
+                raise TooManyValuesError('{} exceeds MAX_VALUES of {}'.format( len(shards), self.max_values ))
             
         return list( shards )
     
@@ -368,7 +364,7 @@ class RedisShardsGetQuery(RedisShardedQuery):
 
     def query(self, conn):
         shards = DictOfLists()        
-        for k in self.sharded_keys( conn ):
+        for k in conn.keys( self.sharder.key ):
             sharded = self.sharder.sharded( k )
             if not sharded:
                 continue
@@ -376,6 +372,8 @@ class RedisShardsGetQuery(RedisShardedQuery):
             if v is None:
                 continue
             shards.append( sharded, v )
+            if len(shards) > self.max_values:
+                raise TooManyValuesError('{} exceeds MAX_VALUES of {}'.format( len(shards), self.max_values ))
         
         return [ k + tuple( v ) for k,v in shards.items() ]
 
