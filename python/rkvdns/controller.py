@@ -423,10 +423,16 @@ class Controller(object):
         return req
 
     def query_failure(self, req, e):
-        logging.error('SERVFAIL: {} in: {} from: {}'.format(
-                repr(e), req.request.question[0].name.to_text(), req.plug.query_address
-            ))
-        req.servfail('Query failure: {}'.format(repr(e)))
+        if req.response_config.nxdomain_for_servfail:
+            logging.error('NXDOMAIN: (SERVFAIL) {} in: {} from: {}'.format(
+                    repr(e), req.request.question[0].name.to_text(), req.plug.query_address
+                ))
+            req.nxdomain('Query failure: {}'.format(repr(e)))
+        else:
+            logging.error('SERVFAIL: {} in: {} from: {}'.format(
+                    repr(e), req.request.question[0].name.to_text(), req.plug.query_address
+                ))
+            req.servfail('Query failure: {}'.format(repr(e)))
         return req
     
     def nxdomain(self, req):
